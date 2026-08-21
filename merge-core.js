@@ -153,7 +153,6 @@
   async function mergeInvoices(PDFDocument, files, opts) {
     opts = opts || {};
     const thresholdCm = opts.thresholdCm != null ? opts.thresholdCm : 14;
-    const forceTwoUp = !!opts.forceTwoUp;   // v7：强制两联拼版（忽略 14cm 阈值）
     const margin = (opts.marginMm != null ? opts.marginMm : 8) * PT_PER_MM;
     const isTrain = opts.isTrain || defaultIsTrain;
     const trainDouble = opts.trainDouble !== false;  // v24：火车票加印默认开启（默认双份打印）
@@ -203,7 +202,6 @@
           name: f.name,
           page: idx + 1,
           type: f.type,                                    // v7：票据类型（itinerary=行程单）
-          rotate90: f.type === 'itinerary',                // v7：行程单旋转 90° 后拼版
         });
       });
     }
