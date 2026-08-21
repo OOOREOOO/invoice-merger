@@ -215,43 +215,27 @@
       if (it.train && trainDouble) seq.push(it);
     }
 
-    // 3) 布局：内容高度 >= 阈值 → 独占一页；否则两联拼版（裁剪到内容）
-    //    火车票固定一页两张，不受阈值影响。
+    // 3) 布局：全部两联拼版（裁剪到内容）；火车票固定一页两张，不受阈值影响。
     // v13：长于 14cm 的发票缩放至 ≤14cm 两联拼版，不再独占一页（避免单票单页浪费）
-    const isTall = () => false;
-
     let i = 0;
     while (i < seq.length) {
-      const it = seq[i];
-      if (isTall(it)) {
-        // 独占整页 A4（整页缩放居中）
-        const p = out.addPage(A4);
-        const scale = Math.min((A4[0] - 2 * margin) / it.w, (A4[1] - 2 * margin) / it.h);
-        const dw = it.w * scale;
-        const dh = it.h * scale;
-        p.drawPage(it.ep, { x: (A4[0] - dw) / 2, y: (A4[1] - dh) / 2, width: dw, height: dh });
-        i++;
-      } else {
-        // 2-up：尝试与下一张（同样为小发票）拼在一起，按内容裁剪绘制
-        const pair = [it];
-        if (i + 1 < seq.length && !isTall(seq[i + 1])) {
-          pair.push(seq[i + 1]);
-        }
-        const p = out.addPage(A4);
-        const n = pair.length;
-        const gap = margin;
-        // v16：统一上下堆叠排布（发票/行程单一视同仁）；单张时居上（与两张时第一张同位置）
-        const avail = A4[1] - 2 * margin;
-        const slotH = Math.min(14 * PT_PER_CM, (avail - (n - 1) * gap) / n);
-        const slotW = A4[0] - 2 * margin;
-        for (let k = 0; k < n; k++) {
-          const it2 = pair[k];
-          const slotTopY = A4[1] - margin - k * (slotH + gap);
-          const slotBottomY = slotTopY - slotH;
-          drawInSlot(p, it2, slotW, slotH, margin, slotBottomY, A4, n === 1);
-        }
-        i += n;
+      // 2-up：尝试与下一张拼在一起，按内容裁剪绘制
+      const pair = [seq[i]];
+      if (i + 1 < seq.length) pair.push(seq[i + 1]);
+      const p = out.addPage(A4);
+      const n = pair.length;
+      const gap = margin;
+      // v16：统一上下堆叠排布（发票/行程单一视同仁）；单张时居上（与两张时第一张同位置）
+      const avail = A4[1] - 2 * margin;
+      const slotH = Math.min(14 * PT_PER_CM, (avail - (n - 1) * gap) / n);
+      const slotW = A4[0] - 2 * margin;
+      for (let k = 0; k < n; k++) {
+        const it2 = pair[k];
+        const slotTopY = A4[1] - margin - k * (slotH + gap);
+        const slotBottomY = slotTopY - slotH;
+        drawInSlot(p, it2, slotW, slotH, margin, slotBottomY, A4, n === 1);
       }
+      i += n;
     }
 
     return await out.save();
