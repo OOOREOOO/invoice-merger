@@ -61,3 +61,9 @@ NODE_PATH=<node_modules 路径> node test-merge-core.js
 - **渲染**：长列表 content-visibility 优化
 - **清理**：移除 Google Fonts、pdf.worker 引用、死加载条脚本、重复滚动置顶脚本等死代码
 - 版本号 v114 → v115（资源 URL `?v=115`）
+
+## v116 变更
+
+- **合并后隐藏「生成合并 PDF」**：合并成功一次后按钮隐藏，直接使用「下载合并 PDF / 下载分类文件夹」；全部取消勾选或清空后自动恢复
+- **操作按钮左右排布**：合并后剩余两个下载按钮恒为水平排列（桌面 flex-row / 窄屏 1fr 1fr 网格）
+- 版本号 v115 → v116（资源 URL `?v=116`）

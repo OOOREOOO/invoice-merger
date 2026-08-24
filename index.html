@@ -216,8 +216,8 @@ window.scrollTo(0, 0);
     <div class="tip" id="previewTip">正在生成预览…</div>
   </div>
 
-  <script src="./pdf.min.js?v=115"></script>
-  <script src="./merge-core.js?v=115"></script>
+  <script src="./pdf.min.js?v=116"></script>
+  <script src="./merge-core.js?v=116"></script>
   <script>
     const PT_PER_CM = 28.3464567;
     let PDFDocument = null;
@@ -252,6 +252,7 @@ window.scrollTo(0, 0);
     let uploadFolderName = ''; // 上传文件夹名（选择文件夹时记录，用于合并 PDF 命名）          // { id, name, bytes, w, h, pages, train, text, content, analyzeError, include, error }
     const trainOverride = {}; // name -> bool（用户手动修正）
     const thumbCache = {};    // id -> dataURL（发票缩略图缓存）
+    let mergedOnce = false;   // v116：已成功合并过一次 → 隐藏「生成合并 PDF」按钮
 
     function loadScript(src) {
       return new Promise((resolve, reject) => {
@@ -278,7 +279,7 @@ window.scrollTo(0, 0);
         PDFDocument = window.PDFLib.PDFDocument;
         return Promise.resolve(PDFDocument);
       }
-      return loadScript('./pdf-lib.min.js?v=115').then(() => {
+      return loadScript('./pdf-lib.min.js?v=116').then(() => {
         PDFDocument = window.PDFLib && window.PDFLib.PDFDocument;
         if (!PDFDocument) throw new Error('PDF 生成库加载失败');
         return PDFDocument;
@@ -287,7 +288,7 @@ window.scrollTo(0, 0);
 
     function ensureJsQR() {
       if (window.jsQR) return Promise.resolve(window.jsQR);
-      return loadScript('./jsqr.min.js?v=115').then(() => {
+      return loadScript('./jsqr.min.js?v=116').then(() => {
         if (!window.jsQR) throw new Error('二维码识别库加载失败');
         return window.jsQR;
       });
@@ -295,7 +296,7 @@ window.scrollTo(0, 0);
 
     function ensureJSZip() {
       if (window.JSZip) return Promise.resolve(window.JSZip);
-      return loadScript('./jszip.min.js?v=115').then(() => {
+      return loadScript('./jszip.min.js?v=116').then(() => {
         if (!window.JSZip) throw new Error('压缩打包库加载失败');
         return window.JSZip;
       });
@@ -1511,6 +1512,15 @@ function parseGaodeTrips(text, defaultDate, cells) {
       const _dz = $('#dlZip'); if (_dz) _dz.disabled = usable.length === 0;
       const summary = $('#summary');
 
+      // v116：合并成功后保持「生成合并 PDF」隐藏；全部取消勾选/清空时重置，恢复生成按钮
+      const _gen = $('#generate');
+      if (mergedOnce && usable.length > 0) {
+        _gen.classList.add('hidden');
+      } else if (usable.length === 0) {
+        mergedOnce = false;
+        _gen.classList.remove('hidden');
+      }
+
       if (usable.length === 0) {
         summary.innerHTML = '<div class="summary-empty">还没有可合并的文件</div>';
         return;
@@ -1669,6 +1679,9 @@ function parseGaodeTrips(text, defaultDate, cells) {
         const _dlEl = $('#dlName'); if (_dlEl) _dlEl.textContent = _dlName;
         toast('合并完成：共 ' + outDoc.getPageCount() + ' 页 A4');
         const _dm = $('#dlMerged'); if (_dm) { _dm.disabled = false; _dm.classList.remove('hidden'); }
+        // v116：合并成功后隐藏「生成合并 PDF」——已生成的结果直接下载即可，无需再次生成
+        mergedOnce = true;
+        const _gen = $('#generate'); if (_gen) _gen.classList.add('hidden');
       } catch (e) {
         console.error(e);
         toast('合并出错：' + (e.message || e), true);
