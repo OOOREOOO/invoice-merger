@@ -221,8 +221,8 @@ window.scrollTo(0, 0);
     <div class="tip" id="previewTip">正在生成预览…</div>
   </div>
 
-  <script src="./pdf.min.js?v=117"></script>
-  <script src="./merge-core.js?v=117"></script>
+  <script src="./pdf.min.js?v=118"></script>
+  <script src="./merge-core.js?v=118"></script>
   <script>
     const PT_PER_CM = 28.3464567;
     let PDFDocument = null;
@@ -284,7 +284,7 @@ window.scrollTo(0, 0);
         PDFDocument = window.PDFLib.PDFDocument;
         return Promise.resolve(PDFDocument);
       }
-      return loadScript('./pdf-lib.min.js?v=117').then(() => {
+      return loadScript('./pdf-lib.min.js?v=118').then(() => {
         PDFDocument = window.PDFLib && window.PDFLib.PDFDocument;
         if (!PDFDocument) throw new Error('PDF 生成库加载失败');
         return PDFDocument;
@@ -293,7 +293,7 @@ window.scrollTo(0, 0);
 
     function ensureJsQR() {
       if (window.jsQR) return Promise.resolve(window.jsQR);
-      return loadScript('./jsqr.min.js?v=117').then(() => {
+      return loadScript('./jsqr.min.js?v=118').then(() => {
         if (!window.jsQR) throw new Error('二维码识别库加载失败');
         return window.jsQR;
       });
@@ -301,7 +301,7 @@ window.scrollTo(0, 0);
 
     function ensureJSZip() {
       if (window.JSZip) return Promise.resolve(window.JSZip);
-      return loadScript('./jszip.min.js?v=117').then(() => {
+      return loadScript('./jszip.min.js?v=118').then(() => {
         if (!window.JSZip) throw new Error('压缩打包库加载失败');
         return window.JSZip;
       });
@@ -330,7 +330,10 @@ window.scrollTo(0, 0);
     }
 
     // 火车票识别默认关键词（设置面板已去除，使用内置关键词）
-    const DEFAULT_TRAIN_KWS = ['火车票','车次','席别','检票口','铁路客票','铁路电子客票','高铁票','动车','铁路','12306','中铁'];
+    // v118：移除 '中铁' —— 中铁（中国中铁）是建筑企业简称，常作为网约车目的地出现
+    //（如"中国中铁二局集团"），票面含"中铁"不代表是火车票；真正的铁路票面必有
+    // 铁路/高铁/动车/12306/车次/检票口等强特征，不依赖"中铁"。
+    const DEFAULT_TRAIN_KWS = ['火车票','车次','席别','检票口','铁路客票','铁路电子客票','高铁票','动车','铁路','12306'];
     function parseKws() { return DEFAULT_TRAIN_KWS; }
     // 按票面文字内容识别火车票（不再依赖文件名）
     function detectTrainByText(text, kws) {
@@ -339,12 +342,12 @@ window.scrollTo(0, 0);
       const clean = raw.replace(/\s/g, '').replace(/[（）()【】\[\]「」]/g, '');
       // 前置排除：航空行程单/登机牌含“航空、航班、登机”等字样，即使含“电子客票”也不是火车票
       const isAviation = /航空|航班|登机|boarding|民航|承运人|客票及行李/.test(raw) || /航空|航班|登机|民航|承运人/.test(clean);
-      const isRail = /铁路|高铁|动车|火车|城际|12306|中铁|高铁票/.test(raw) || /铁路|高铁|动车|火车|城际|12306|中铁/.test(clean);
+      const isRail = /铁路|高铁|动车|火车|城际|12306|高铁票/.test(raw) || /铁路|高铁|动车|火车|城际|12306/.test(clean);
       if (isAviation && !isRail) return false;
       // 1) 直接关键词匹配
       if (kws.some(k => raw.includes(k) || clean.includes(k))) return true;
-      // 2) 组合兜底：铁路/12306/中铁 与 客票/车次/座/票价/站 同现
-      const railSignals = ['铁路', '12306', '中铁'];
+      // 2) 组合兜底：铁路/12306 与 客票/车次/座/票价/站 同现（'中铁' 已移除：企业简称，非运输特征）
+      const railSignals = ['铁路', '12306'];
       const ticketSignals = ['客票', '车票', '电子客票', '车次', '座', '票价', '检票口', '站'];
       const hasRail = railSignals.some(s => raw.includes(s) || clean.includes(s));
       const hasTicket = ticketSignals.some(s => raw.includes(s) || clean.includes(s));
