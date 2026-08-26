@@ -49,16 +49,19 @@
     for (const pg of pages) {
       // 用 CropBox（回退 MediaBox）：真实发票常用 CropBox 定义可见区（如 [0,433,595,842]），
       // MediaBox 缺失时 pdf-lib 会返回默认 A4 导致隐藏内容（如 didi）无法裁剪
-      const mb = pg.node.CropBox() || pg.node.MediaBox();
+      const cropBox = pg.node.CropBox();
+      const mediaBox = pg.node.MediaBox();
+      const mb = cropBox || mediaBox;
       const mbX = parseFloat(String(mb.get(0)));
       const mbY = parseFloat(String(mb.get(1)));
       const mbW = parseFloat(String(mb.get(2))) - mbX;
       const mbH = parseFloat(String(mb.get(3))) - mbY;
-      // MediaBox 完整重设：旋转 90° 后内容占 [0, mbH]×[0, mbW]
-      mb.set(0, context.obj(0));
-      mb.set(1, context.obj(0));
-      mb.set(2, context.obj(mbH));
-      mb.set(3, context.obj(mbW));
+      // v122 修复：MediaBox 与 CropBox 必须同步互换——applyCropBoxes 裁剪后两者是
+      // 独立对象（序列化后共享丢失），只互换 CropBox 会导致 embedPdf（只读 MediaBox
+      // 作为 Form XObject BBox）拿到未旋转尺寸，旋转视觉失效。
+      const box = context.obj([0, 0, mbH, mbW]);
+      pg.node.set(getPDFLib().PDFName.of('MediaBox'), box);
+      if (cropBox) pg.node.set(getPDFLib().PDFName.of('CropBox'), box);
       // head：先裁剪到原 MediaBox（剔除 MediaBox 外的隐藏内容，如某些发票的水印/装饰字），再旋转
       // 平移量 = mbY+mbH：原 y=mbY 的内容旋转后 x'=0，y=mbY+mbH → x'=mbH
       const csHead = context.flateStream(
@@ -67,17 +70,18 @@
       );
       const csTail = context.flateStream("Q\n");
       // 三态处理：Contents 可能是 PDFArray / 单流 PDFStream / 不存在（扫描件常见单流）
+      // v122 修复：PDFArray.asArray() 返回浅拷贝（slice），对其 unshift/push 不生效——
+      // 必须用 PDFArray 自身的 insert/push（内部数组操作），否则包裹流在 save() 后丢失。
       const headRef = context.register(csHead);
       const tailRef = context.register(csTail);
       const contents = pg.node.Contents();
       if (!contents) {
         // 无 Contents：新建数组
         pg.node.set(getPDFLib().PDFName.of('Contents'), context.obj([headRef, tailRef]));
-      } else if (typeof contents.asArray === 'function') {
-        // PDFArray：内部数组操作
-        const arr = contents.asArray();
-        arr.unshift(headRef);
-        arr.push(tailRef);
+      } else if (typeof contents.push === 'function') {
+        // PDFArray：内部数组操作（insert/push 直接改内部数组，asArray 是副本不可用）
+        contents.insert(0, headRef);
+        contents.push(tailRef);
       } else {
         // 单流 PDFStream：包成 [head, 原流, tail] 数组替换
         pg.node.set(getPDFLib().PDFName.of('Contents'), context.obj([headRef, contents, tailRef]));
@@ -117,6 +121,7 @@
       pg.node.set(getPDFLib().PDFName.of('MediaBox'), box);
       pg.node.set(getPDFLib().PDFName.of('CropBox'), box);
       // 内容流包裹：平移 (-bx,-by) 把原内容移到新原点（裁剪区之外的内容自然落到新 MediaBox 外被裁掉）
+      // v122 修复：PDFArray.asArray() 是浅拷贝，必须用 insert/push 操作内部数组
       const csHead = context.flateStream(
         "q\n1 0 0 1 " + (-bx) + " " + (-by) + " cm\n"
       );
@@ -126,10 +131,9 @@
       const contents = pg.node.Contents();
       if (!contents) {
         pg.node.set(getPDFLib().PDFName.of('Contents'), context.obj([headRef, tailRef]));
-      } else if (typeof contents.asArray === 'function') {
-        const arr = contents.asArray();
-        arr.unshift(headRef);
-        arr.push(tailRef);
+      } else if (typeof contents.push === 'function') {
+        contents.insert(0, headRef);
+        contents.push(tailRef);
       } else {
         pg.node.set(getPDFLib().PDFName.of('Contents'), context.obj([headRef, contents, tailRef]));
       }
@@ -175,11 +179,19 @@
       if (needCrop && !train) fBytes = await applyCropBoxes(PDFDocument, f.bytes, f.content);
       // v22：仅竖版高票（内容宽 < 内容高）才旋转 90°——横版高票（如滴滴发票 566×422）旋转后会进一步压扁，
       // 按原方向两联拼版 + bbox 裁剪后字号接近原大，打印清晰；无 content 时保持旧行为（旋转）。
-      // v120：行程单（itinerary）豁免旋转——正常方向直接打印（红框裁切后高度已收缩，不再需要横放适配）。
+      // v120：行程单（itinerary）默认豁免旋转——正常方向直接打印（红框裁切后高度已收缩）。
+      // v122：行程单红框裁切后正文高度仍超过半页 A4（14cm 槽位上限）时，才旋转 90° 横放显示完全。
       const c0 = (f.content && f.content[0]) || {};
       const cw = c0.wCm || 0, ch = c0.hCm || 0;
       const isPortrait = cw > 0 && ch > 0 && cw < ch;
-      if (maxContentCm > 14 && !train && f.type !== 'itinerary' && (!cw || isPortrait)) {
+      if (f.type === 'itinerary' && !train) {
+        // 用裁切后（applyCropBoxes 已执行）的实际页面高度判断
+        const croppedDoc = await PDFDocument.load(fBytes, { ignoreEncryption: true });
+        const pg0 = croppedDoc.getPage(0);
+        const mb0 = pg0.node.CropBox() || pg0.node.MediaBox();
+        const hPt = parseFloat(String(mb0.get(3))) - parseFloat(String(mb0.get(1)));
+        if (hPt > 14 * PT_PER_CM) fBytes = await preRotate90(PDFDocument, fBytes);
+      } else if (maxContentCm > 14 && !train && (!cw || isPortrait)) {
         fBytes = await preRotate90(PDFDocument, f.bytes);
       }
       // v25：修复多页 PDF 静默丢页——pdf-lib embedPdf 默认只嵌第 1 页（indices=[0]），
