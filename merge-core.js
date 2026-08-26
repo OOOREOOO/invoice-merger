@@ -30,7 +30,14 @@
   const A4 = [595.28, 841.89]; // A4 单位 pt
   function getPDFLib() {
     // 异步加载 pdf-lib 时，合并调用发生在加载后；这里动态读取最新引用。
-    return global.PDFLib || (typeof window !== 'undefined' ? window.PDFLib : null);
+    // v123 修复：Node 测试环境 global.PDFLib 未设置（test 只 require('pdf-lib') 传 PDFDocument），
+    // v122 起 preRotate90/applyCropBoxes 无条件调用 getPDFLib() → null 崩溃 → 增加 CommonJS require 兜底。
+    if (global.PDFLib) return global.PDFLib;
+    if (typeof window !== 'undefined' && window.PDFLib) return window.PDFLib;
+    if (typeof require === 'function') {
+      try { return require('pdf-lib'); } catch (e) { /* Node 环境未装 pdf-lib 时忽略 */ }
+    }
+    return null;
   }
 
   const DEFAULT_TRAIN_KEYWORDS = ['火车票', '铁路', '高铁', '客票', '车票', 'train', '行程单'];
@@ -228,25 +235,55 @@
 
     // 3) 布局：全部两联拼版（裁剪到内容）；火车票固定一页两张，不受阈值影响。
     // v13：长于 14cm 的发票缩放至 ≤14cm 两联拼版，不再独占一页（避免单票单页浪费）
+    // v123：行程单（itinerary 且非火车票，内容高 ≤14cm）改走横向 A4 页放大——
+    //   页面横版 [841.89,595.28]，内容放大到宽度满格（约 1.67 倍，显示约 6.3cm 高），
+    //   解决竖版横排受宽度限制只能显示 ~4.3cm 高导致「打印过小」的问题；
+    //   内容高 >14cm 的超长行程单维持竖版 + preRotate90 旋转（前置阶段已处理）。
+    const LANDSCAPE = [841.89, 595.28];
     let i = 0;
     while (i < seq.length) {
-      // 2-up：尝试与下一张拼在一起，按内容裁剪绘制
-      const pair = [seq[i]];
-      if (i + 1 < seq.length) pair.push(seq[i + 1]);
-      const p = out.addPage(A4);
-      const n = pair.length;
-      const gap = margin;
-      // v16：统一上下堆叠排布（发票/行程单一视同仁）；单张时居上（与两张时第一张同位置）
-      const avail = A4[1] - 2 * margin;
-      const slotH = Math.min(14 * PT_PER_CM, (avail - (n - 1) * gap) / n);
-      const slotW = A4[0] - 2 * margin;
-      for (let k = 0; k < n; k++) {
-        const it2 = pair[k];
-        const slotTopY = A4[1] - margin - k * (slotH + gap);
-        const slotBottomY = slotTopY - slotH;
-        drawInSlot(p, it2, slotW, slotH, margin, slotBottomY, A4, n === 1);
+      const cur = seq[i];
+      const isIt = cur.type === 'itinerary' && !cur.train && cur.contentHcm <= 14;
+      if (isIt) {
+        // 横向页：收集连续且同类的行程单，每页最多 2 张（上下堆叠）
+        const pair = [];
+        while (i < seq.length && seq[i].type === 'itinerary' && !seq[i].train && seq[i].contentHcm <= 14 && pair.length < 2) {
+          pair.push(seq[i]); i++;
+        }
+        const p = out.addPage(LANDSCAPE);
+        const n = pair.length;
+        const gap = margin;
+        const avail = LANDSCAPE[1] - 2 * margin;
+        const slotH = Math.min(14 * PT_PER_CM, (avail - (n - 1) * gap) / n);
+        const slotW = LANDSCAPE[0] - 2 * margin;
+        for (let k = 0; k < n; k++) {
+          const slotTopY = LANDSCAPE[1] - margin - k * (slotH + gap);
+          const slotBottomY = slotTopY - slotH;
+          drawInSlot(p, pair[k], slotW, slotH, margin, slotBottomY, LANDSCAPE, n === 1);
+        }
+      } else {
+        // 竖版 2-up：只与非行程单（或超长行程单）配对
+        const pair = [seq[i]];
+        if (i + 1 < seq.length) {
+          const nx = seq[i + 1];
+          const nxIsIt = nx.type === 'itinerary' && !nx.train && nx.contentHcm <= 14;
+          if (!nxIsIt) pair.push(nx);
+        }
+        i += pair.length;
+        const p = out.addPage(A4);
+        const n = pair.length;
+        const gap = margin;
+        // v16：统一上下堆叠排布（发票/行程单一视同仁）；单张时居上（与两张时第一张同位置）
+        const avail = A4[1] - 2 * margin;
+        const slotH = Math.min(14 * PT_PER_CM, (avail - (n - 1) * gap) / n);
+        const slotW = A4[0] - 2 * margin;
+        for (let k = 0; k < n; k++) {
+          const it2 = pair[k];
+          const slotTopY = A4[1] - margin - k * (slotH + gap);
+          const slotBottomY = slotTopY - slotH;
+          drawInSlot(p, it2, slotW, slotH, margin, slotBottomY, A4, n === 1);
+        }
       }
-      i += n;
     }
 
     return await out.save();

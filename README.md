@@ -116,3 +116,13 @@ NODE_PATH=<node_modules 路径> node test-merge-core.js
 - **修复 `preRotate90` 只互换 CropBox 不互换 MediaBox**：applyCropBoxes 裁剪后 MediaBox 与 CropBox 为独立对象（序列化后共享丢失），`embedPdf` 只读 MediaBox 作为 Form XObject BBox → 旋转尺寸不生效；现同步设置两者
 - **验证**：滴滴A 红框 4.73cm（2 笔行程不旋转）、高德 5.62cm（回归保留标题不旋转）、构造 18cm 超长行程单 → 旋转 90°（嵌入 XObject BBox 510×595 竖置 + 内容流含 `0 1 -1 0` 旋转矩阵 + 像素墨水 bbox 122×468px 竖向）；多文件 2-up 冒烟（A+B 拼版 + 发票单页）全部通过
 - 版本号 v121 → v122（资源 URL `?v=122`）
+
+## v123 变更
+
+- **行程单改走横向 A4 页放大**（样本：`滴滴出行行程报销单B.pdf`）：
+  - 行程单（非火车票、红框裁切后内容高 ≤14cm）布局改走横向 A4 页 `[841.89,595.28]`：内容按宽度满格放大（约 1.67 倍，显示约 6.3cm 高），解决竖版横排受槽位宽度限制只能显示 ~4.3cm 高导致「打印过小」的问题
+  - 连续同类行程单每页最多 2 张上下堆叠；内容高 >14cm 的超长行程单维持竖版 + `preRotate90` 旋转（前置阶段已处理）
+  - 竖版 2-up 不再与行程单配对（行程单已被横向页分支吸收）
+- **修复 v122 引入的 Node 测试回归**：v122 起 `preRotate90`/`applyCropBoxes` 无条件调用 `getPDFLib()` 取 `PDFName`，而 Node 测试环境 `global.PDFLib` 未设置 → 大票旋转路径 null 崩溃（浏览器不受影响）；`getPDFLib` 增加 CommonJS `require('pdf-lib')` 兜底
+- **验证**：四用例（单张 B 横向 1 页字高 12.0pt / A+B 横向同页上下 2 张字高 10.0pt / B+发票D 横向页+竖版页 / 超长 18cm 竖版旋转回归正常）全部通过；`test-merge-core.js` 8 组断言全部 PASS
+- 版本号 v122 → v123（资源 URL `?v=123`）
