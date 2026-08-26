@@ -175,7 +175,7 @@ window.scrollTo(0, 0);
       <div class="glass card hidden" id="fileInfoCard">
         <div class="list-head">
           <div><h3>票据分类</h3></div>
-          <span class="count" id="count">0 个 PDF</span>
+          <span class="count" id="count">0 张发票，0 张非发票</span>
         </div>
         <div class="file-list" id="list">
           <div class="empty" id="empty">
@@ -221,8 +221,8 @@ window.scrollTo(0, 0);
     <div class="tip" id="previewTip">正在生成预览…</div>
   </div>
 
-  <script src="./pdf.min.js?v=120"></script>
-  <script src="./merge-core.js?v=120"></script>
+  <script src="./pdf.min.js?v=121"></script>
+  <script src="./merge-core.js?v=121"></script>
   <script>
     const PT_PER_CM = 28.3464567;
     let PDFDocument = null;
@@ -284,7 +284,7 @@ window.scrollTo(0, 0);
         PDFDocument = window.PDFLib.PDFDocument;
         return Promise.resolve(PDFDocument);
       }
-      return loadScript('./pdf-lib.min.js?v=120').then(() => {
+      return loadScript('./pdf-lib.min.js?v=121').then(() => {
         PDFDocument = window.PDFLib && window.PDFLib.PDFDocument;
         if (!PDFDocument) throw new Error('PDF 生成库加载失败');
         return PDFDocument;
@@ -293,7 +293,7 @@ window.scrollTo(0, 0);
 
     function ensureJsQR() {
       if (window.jsQR) return Promise.resolve(window.jsQR);
-      return loadScript('./jsqr.min.js?v=120').then(() => {
+      return loadScript('./jsqr.min.js?v=121').then(() => {
         if (!window.jsQR) throw new Error('二维码识别库加载失败');
         return window.jsQR;
       });
@@ -301,7 +301,7 @@ window.scrollTo(0, 0);
 
     function ensureJSZip() {
       if (window.JSZip) return Promise.resolve(window.JSZip);
-      return loadScript('./jszip.min.js?v=120').then(() => {
+      return loadScript('./jszip.min.js?v=121').then(() => {
         if (!window.JSZip) throw new Error('压缩打包库加载失败');
         return window.JSZip;
       });
@@ -1421,11 +1421,13 @@ function parseGaodeTrips(text, defaultDate, cells) {
       // 行程单显示日期标签（按日期排序时的视觉锚点）
       const dateTag = (f.docType === 'itinerary' && f.date) ? `<span class="meta-date">${f.date}</span>` : '';
 
+      // v121：文件名显示隐藏 .pdf 后缀（悬浮 title 保留全名）
+      const dispName = f.name.replace(/\.pdf$/i, '');
       // v83：行式 → 卡片横向排布；发票金额明细隐藏，只保留规格与类别
       row.innerHTML = `
         <div class="fc-head">
           <div class="row-check ${f.include ? 'on' : ''}" data-act="include" data-cat="${f.docType || 'other'}" style="--cat-color:${cat.color}" title="${f.include ? '包含' : '未选中'}"></div>
-          <div class="fc-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+          <div class="fc-name" title="${escapeHtml(f.name)}">${escapeHtml(dispName)}</div>
           <span class="amt" style="color:${cat.color}" title="${amtLower}${amtUpper ? ' / 大写 ' + amtUpper : ''}">${amtLower}</span>
         </div>
       `;
@@ -1475,14 +1477,19 @@ function parseGaodeTrips(text, defaultDate, cells) {
       // 小发票阈值固定 14cm（A4 默认 14+ 独占，火车票固定 1 页两张）；原页面顶部设置项已去除
       const threshold = 14 * PT_PER_CM;
       listEl.innerHTML = '';
+      // v121：统计「X 张发票，X 张非发票」——发票=可计入金额的类别（火车票/机票/网约车/公共交通/住宿/餐饮/通用发票），
+      // 非发票=行程单（报销凭证）与其他
+      const INV_DOC_TYPES = new Set(['train', 'flight', 'ridehail', 'transit', 'hotel', 'meal', 'invoice']);
+      const invCount = files.filter(f => INV_DOC_TYPES.has(f.docType || 'other')).length;
+      const nonInvCount = files.length - invCount;
       if (files.length === 0) {
         listEl.appendChild(emptyEl);
         emptyEl.style.display = '';
-        $('#count').textContent = '0 个 PDF';
+        $('#count').textContent = '0 张发票，0 张非发票';
         return;
       }
       emptyEl.style.display = 'none';
-      $('#count').textContent = files.length + ' 个 PDF';
+      $('#count').textContent = invCount + ' 张发票，' + nonInvCount + ' 张非发票';
 
       // 按分区依次渲染；v96：分区默认折叠，空分区隐藏（无票据的标签不显示）
       for (const sec of SECTIONS) {
@@ -1564,7 +1571,7 @@ function parseGaodeTrips(text, defaultDate, cells) {
         if (url) {
           img.src = url;
           img.style.opacity = '1';
-          tip.textContent = `${f.name}`;
+          tip.textContent = `${f.name.replace(/\.pdf$/i, '')}`;
         } else {
           img.src = '';
           tip.textContent = '预览生成失败';
