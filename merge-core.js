@@ -28,6 +28,7 @@
   const PT_PER_CM = 28.3464567;
   const PT_PER_MM = 2.83464567;
   const A4 = [595.28, 841.89]; // A4 单位 pt
+  const LANDSCAPE = [841.89, 595.28]; // v123：行程单横向 A4 页（宽 841.89 × 高 595.28pt）
   function getPDFLib() {
     // 异步加载 pdf-lib 时，合并调用发生在加载后；这里动态读取最新引用。
     // v123 修复：Node 测试环境 global.PDFLib 未设置（test 只 require('pdf-lib') 传 PDFDocument），
@@ -191,15 +192,29 @@
       const c0 = (f.content && f.content[0]) || {};
       const cw = c0.wCm || 0, ch = c0.hCm || 0;
       const isPortrait = cw > 0 && ch > 0 && cw < ch;
+      let rotated = false; // v124：本文件是否已旋转（旋转后布局走独占竖版页）
       if (f.type === 'itinerary' && !train) {
-        // 用裁切后（applyCropBoxes 已执行）的实际页面高度判断
-        const croppedDoc = await PDFDocument.load(fBytes, { ignoreEncryption: true });
-        const pg0 = croppedDoc.getPage(0);
-        const mb0 = pg0.node.CropBox() || pg0.node.MediaBox();
-        const hPt = parseFloat(String(mb0.get(3))) - parseFloat(String(mb0.get(1)));
-        if (hPt > 14 * PT_PER_CM) fBytes = await preRotate90(PDFDocument, fBytes);
+        // v124：旋转判定 = 「宽度放大到横向页满格后，高度 >14cm 才旋转」——
+        // 水平裁切后的 bbox 宽度决定放大倍数（A4 横向可用宽 / 表格宽），
+        // 放大后高度 = bbox 高 × 该倍数；超过 14cm 才 preRotate90 横放（竖版页独占显示）。
+        const bb = c0.bbox;
+        let doRotate = false;
+        if (bb && bb.w > 0 && bb.h > 0 && c0.hCm > 0) {
+          const slotWcm = (LANDSCAPE[0] - 2 * margin) / PT_PER_CM;
+          const scaleW = slotWcm / (bb.w / PT_PER_CM);
+          doRotate = (bb.h / PT_PER_CM) * scaleW > 14;
+        } else {
+          // 无 bbox 信息时回退：裁切后（applyCropBoxes 已执行）页面高度 >14cm 才旋转（v122 行为）
+          const croppedDoc = await PDFDocument.load(fBytes, { ignoreEncryption: true });
+          const pg0 = croppedDoc.getPage(0);
+          const mb0 = pg0.node.CropBox() || pg0.node.MediaBox();
+          const hPt = parseFloat(String(mb0.get(3))) - parseFloat(String(mb0.get(1)));
+          doRotate = hPt > 14 * PT_PER_CM;
+        }
+        if (doRotate) { fBytes = await preRotate90(PDFDocument, fBytes); rotated = true; }
       } else if (maxContentCm > 14 && !train && (!cw || isPortrait)) {
         fBytes = await preRotate90(PDFDocument, f.bytes);
+        rotated = true;
       }
       // v25：修复多页 PDF 静默丢页——pdf-lib embedPdf 默认只嵌第 1 页（indices=[0]），
       // 先 load 源文件取页数，显式嵌入全部页（多页扫描件/多联票据不再丢页）
@@ -222,6 +237,7 @@
           name: f.name,
           page: idx + 1,
           type: f.type,                                    // v7：票据类型（itinerary=行程单）
+          rotated,                                          // v124：已旋转（放大后高度 >14cm 的行程单）
         });
       });
     }
@@ -239,15 +255,23 @@
     //   页面横版 [841.89,595.28]，内容放大到宽度满格（约 1.67 倍，显示约 6.3cm 高），
     //   解决竖版横排受宽度限制只能显示 ~4.3cm 高导致「打印过小」的问题；
     //   内容高 >14cm 的超长行程单维持竖版 + preRotate90 旋转（前置阶段已处理）。
-    const LANDSCAPE = [841.89, 595.28];
     let i = 0;
     while (i < seq.length) {
       const cur = seq[i];
-      const isIt = cur.type === 'itinerary' && !cur.train && cur.contentHcm <= 14;
+      // v124：已旋转的行程单（满宽放大后高度 >14cm）独占竖版页，slotH 放宽到整页可用高，
+      //   避免 14cm 槽位上限把旋转后的长边压小（此前 18cm 超长样本会被压到 0.78 倍）。
+      if (cur.rotated) {
+        const p = out.addPage(A4);
+        const avail = A4[1] - 2 * margin;
+        drawInSlot(p, cur, A4[0] - 2 * margin, avail, margin, A4[1] - margin - avail, A4, true);
+        i++;
+        continue;
+      }
+      const isIt = cur.type === 'itinerary' && !cur.train && !cur.rotated && cur.contentHcm <= 14;
       if (isIt) {
         // 横向页：收集连续且同类的行程单，每页最多 2 张（上下堆叠）
         const pair = [];
-        while (i < seq.length && seq[i].type === 'itinerary' && !seq[i].train && seq[i].contentHcm <= 14 && pair.length < 2) {
+        while (i < seq.length && seq[i].type === 'itinerary' && !seq[i].train && !seq[i].rotated && seq[i].contentHcm <= 14 && pair.length < 2) {
           pair.push(seq[i]); i++;
         }
         const p = out.addPage(LANDSCAPE);
@@ -262,11 +286,11 @@
           drawInSlot(p, pair[k], slotW, slotH, margin, slotBottomY, LANDSCAPE, n === 1);
         }
       } else {
-        // 竖版 2-up：只与非行程单（或超长行程单）配对
+        // 竖版 2-up：只与非行程单（或超长/已旋转行程单）配对
         const pair = [seq[i]];
         if (i + 1 < seq.length) {
           const nx = seq[i + 1];
-          const nxIsIt = nx.type === 'itinerary' && !nx.train && nx.contentHcm <= 14;
+          const nxIsIt = nx.type === 'itinerary' && !nx.train && !nx.rotated && nx.contentHcm <= 14;
           if (!nxIsIt) pair.push(nx);
         }
         i += pair.length;
