@@ -175,10 +175,11 @@
       if (needCrop && !train) fBytes = await applyCropBoxes(PDFDocument, f.bytes, f.content);
       // v22：仅竖版高票（内容宽 < 内容高）才旋转 90°——横版高票（如滴滴发票 566×422）旋转后会进一步压扁，
       // 按原方向两联拼版 + bbox 裁剪后字号接近原大，打印清晰；无 content 时保持旧行为（旋转）。
+      // v120：行程单（itinerary）豁免旋转——正常方向直接打印（红框裁切后高度已收缩，不再需要横放适配）。
       const c0 = (f.content && f.content[0]) || {};
       const cw = c0.wCm || 0, ch = c0.hCm || 0;
       const isPortrait = cw > 0 && ch > 0 && cw < ch;
-      if (maxContentCm > 14 && !train && (!cw || isPortrait)) {
+      if (maxContentCm > 14 && !train && f.type !== 'itinerary' && (!cw || isPortrait)) {
         fBytes = await preRotate90(PDFDocument, f.bytes);
       }
       // v25：修复多页 PDF 静默丢页——pdf-lib embedPdf 默认只嵌第 1 页（indices=[0]），
