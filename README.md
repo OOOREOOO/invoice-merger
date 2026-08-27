@@ -244,3 +244,23 @@ NODE_PATH=<node_modules 路径> node test-merge-core.js
   - 合并后打印按钮显示可用；点击打印按钮 iframe 数量 1→2，确认创建了隐藏 iframe 并加载合并 PDF
   - test-merge-core 16 项 PASS；内联 JS 语法 3 块全过
 - 版本号 v134 → v135（资源 URL `?v=135`）
+
+## v136 变更
+
+- **总金额数字放大、框居中**：用户反馈总金额框数字偏小、右侧留白过多、未居中
+  - `.fabbar .summary .total .amt`：`font-size` 20px → **28px**，`font-weight` 800 → **900**；标签 `.tl` 13px 配浅白
+  - 总金额框自身改为 `display: flex; align-items: center; justify-content: center; gap: 8px;`（框内文字垂直/水平居中）
+  - 框宽度仍 `fit-content` 自适应金额内容；padding 加宽为 `7px 18px 7px 20px`
+  - 桌面端 `.fabbar .summary` 增加 `align-items: center; text-align: center;`，使深色胶囊在右侧汇总区内水平居中（实测 1440px 下中心点偏移 < 1px）
+- **修复打印按钮无响应**：v135 使用 `left:-9999px` 的 off-screen iframe，在部分浏览器/无头环境下无法触发 `contentWindow.print()`
+  - 改为**可见但透明**的 iframe（`opacity:0; pointer-events:none; z-index:-1; width:100%; height:100%`），避免浏览器对离屏 iframe 的优化/安全限制
+  - onload 后延迟 400ms 调用 `contentWindow.focus()` + `contentWindow.print()`
+  - 增加 try/catch；若 print 抛错，兜底 `window.open(lastBlobUrl, '_blank')` 在新标签页打开 PDF
+  - 增加 3s 超时兜底：若 iframe 加载/打印完全无响应，自动 `window.open(lastBlobUrl, '_blank')`
+  - iframe 清理延迟 1200ms，避免过早移除影响打印对话框
+- **验证**
+  - puppeteer + Edge headless（桌面 1440×900）：总金额数字 28px/900、框在 summary 内水平居中（中心点偏移 0.5px）
+  - puppeteer + Edge headless（移动 412×915）：总金额框 flex + justify-center + align-center
+  - 合并后点击打印按钮：iframe[title="print-frame"] 创建成功，`src` 为 blob URL
+  - `test-merge-core.js` 16 项 PASS；内联 JS 语法 3 块全过
+- 版本号 v135 → v136（资源 URL `?v=136`）
