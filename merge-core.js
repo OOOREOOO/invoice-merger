@@ -28,7 +28,7 @@
   const PT_PER_CM = 28.3464567;
   const PT_PER_MM = 2.83464567;
   const A4 = [595.28, 841.89]; // A4 单位 pt
-  const LANDSCAPE = [841.89, 595.28]; // v123：行程单横向 A4 页（宽 841.89 × 高 595.28pt）
+  // v128：删除 LANDSCAPE——行程单不再走横向 A4 页放大，统一竖版 A4 2-up 半页槽位
   function getPDFLib() {
     // 异步加载 pdf-lib 时，合并调用发生在加载后；这里动态读取最新引用。
     // v123 修复：Node 测试环境 global.PDFLib 未设置（test 只 require('pdf-lib') 传 PDFDocument），
@@ -206,20 +206,24 @@
       // 按原方向两联拼版 + bbox 裁剪后字号接近原大，打印清晰；无 content 时保持旧行为（旋转）。
       // v120：行程单（itinerary）默认豁免旋转——正常方向直接打印（红框裁切后高度已收缩）。
       // v122：行程单红框裁切后正文高度仍超过半页 A4（14cm 槽位上限）时，才旋转 90° 横放显示完全。
+      // v128：行程单只占 1/2 A4——统一放入竖版 A4 半页槽位（不再横向整页放大 / 旋转独占整页）。
+      //  旋转判定 = 「半页槽位内比较两种方向字号，选大的」：不旋转 s1=min(slotW/w,slotH/h)，
+      //  旋转 s2=min(slotW/h,slotH/w)；当 s2>s1（旋转后字更大）才 preRotate90。
+      //  由于 slotW(549.9pt) > slotH(386.9pt)，宽扁表（w≥h）恒有 s1≥s2 → 不旋转（字更大）；
+      //  仅源内容竖长（w<h）旋转后横放占满半页槽宽，字更大 → 旋转。
       const c0 = (f.content && f.content[0]) || {};
       const cw = c0.wCm || 0, ch = c0.hCm || 0;
       const isPortrait = cw > 0 && ch > 0 && cw < ch;
-      let rotated = false; // v124：本文件是否已旋转（旋转后布局走独占竖版页）
+      let rotated = false; // 本文件是否已旋转（旋转判定见下；v128 后布局统一竖版 2-up，不再独占页）
       if (f.type === 'itinerary' && !train) {
-        // v124：旋转判定 = 「宽度放大到横向页满格后，高度 >14cm 才旋转」——
-        // 水平裁切后的 bbox 宽度决定放大倍数（A4 横向可用宽 / 表格宽），
-        // 放大后高度 = bbox 高 × 该倍数；超过 14cm 才 preRotate90 横放（竖版页独占显示）。
         const bb = c0.bbox;
         let doRotate = false;
         if (bb && bb.w > 0 && bb.h > 0 && c0.hCm > 0) {
-          const slotWcm = (LANDSCAPE[0] - 2 * margin) / PT_PER_CM;
-          const scaleW = slotWcm / (bb.w / PT_PER_CM);
-          doRotate = (bb.h / PT_PER_CM) * scaleW > 14;
+          const slotWpt = A4[0] - 2 * margin;                                   // 549.9pt
+          const slotHpt = Math.min(14 * PT_PER_CM, (A4[1] - 2 * margin - margin) / 2); // 两张时半页 ≈386.9pt
+          const s1 = Math.min(slotWpt / bb.w, slotHpt / bb.h);
+          const s2 = Math.min(slotWpt / bb.h, slotHpt / bb.w);
+          doRotate = s2 > s1;
         } else {
           // 无 bbox 信息时回退：裁切后（applyCropBoxes 已执行）页面高度 >14cm 才旋转（v122 行为）
           const croppedDoc = await PDFDocument.load(fBytes, { ignoreEncryption: true });
@@ -268,62 +272,27 @@
 
     // 3) 布局：全部两联拼版（裁剪到内容）；火车票固定一页两张，不受阈值影响。
     // v13：长于 14cm 的发票缩放至 ≤14cm 两联拼版，不再独占一页（避免单票单页浪费）
-    // v123：行程单（itinerary 且非火车票，内容高 ≤14cm）改走横向 A4 页放大——
-    //   页面横版 [841.89,595.28]，内容放大到宽度满格（约 1.67 倍，显示约 6.3cm 高），
-    //   解决竖版横排受宽度限制只能显示 ~4.3cm 高导致「打印过小」的问题；
-    //   内容高 >14cm 的超长行程单维持竖版 + preRotate90 旋转（前置阶段已处理）。
+    // v128：行程单只占 1/2 A4——删除 v123 横向 A4 放大页与 v124 旋转独占页，
+    //   所有票据（含行程单，无论旋转与否）统一竖版 A4 2-up，每张最多占半页槽位；
+    //   旋转判定已在前置阶段按「半页槽位内字号择优」（宽扁表不旋转、竖长条旋转）。
     let i = 0;
     while (i < seq.length) {
-      const cur = seq[i];
-      // v124：已旋转的行程单（满宽放大后高度 >14cm）独占竖版页，slotH 放宽到整页可用高，
-      //   避免 14cm 槽位上限把旋转后的长边压小（此前 18cm 超长样本会被压到 0.78 倍）。
-      if (cur.rotated) {
-        const p = out.addPage(A4);
-        const avail = A4[1] - 2 * margin;
-        drawInSlot(p, cur, A4[0] - 2 * margin, avail, margin, A4[1] - margin - avail, A4, true);
-        i++;
-        continue;
-      }
-      const isIt = cur.type === 'itinerary' && !cur.train && !cur.rotated && cur.contentHcm <= 14;
-      if (isIt) {
-        // 横向页：收集连续且同类的行程单，每页最多 2 张（上下堆叠）
-        const pair = [];
-        while (i < seq.length && seq[i].type === 'itinerary' && !seq[i].train && !seq[i].rotated && seq[i].contentHcm <= 14 && pair.length < 2) {
-          pair.push(seq[i]); i++;
-        }
-        const p = out.addPage(LANDSCAPE);
-        const n = pair.length;
-        const gap = margin;
-        const avail = LANDSCAPE[1] - 2 * margin;
-        const slotH = Math.min(14 * PT_PER_CM, (avail - (n - 1) * gap) / n);
-        const slotW = LANDSCAPE[0] - 2 * margin;
-        for (let k = 0; k < n; k++) {
-          const slotTopY = LANDSCAPE[1] - margin - k * (slotH + gap);
-          const slotBottomY = slotTopY - slotH;
-          drawInSlot(p, pair[k], slotW, slotH, margin, slotBottomY, LANDSCAPE, n === 1);
-        }
-      } else {
-        // 竖版 2-up：只与非行程单（或超长/已旋转行程单）配对
-        const pair = [seq[i]];
-        if (i + 1 < seq.length) {
-          const nx = seq[i + 1];
-          const nxIsIt = nx.type === 'itinerary' && !nx.train && !nx.rotated && nx.contentHcm <= 14;
-          if (!nxIsIt) pair.push(nx);
-        }
-        i += pair.length;
-        const p = out.addPage(A4);
-        const n = pair.length;
-        const gap = margin;
-        // v16：统一上下堆叠排布（发票/行程单一视同仁）；单张时居上（与两张时第一张同位置）
-        const avail = A4[1] - 2 * margin;
-        const slotH = Math.min(14 * PT_PER_CM, (avail - (n - 1) * gap) / n);
-        const slotW = A4[0] - 2 * margin;
-        for (let k = 0; k < n; k++) {
-          const it2 = pair[k];
-          const slotTopY = A4[1] - margin - k * (slotH + gap);
-          const slotBottomY = slotTopY - slotH;
-          drawInSlot(p, it2, slotW, slotH, margin, slotBottomY, A4, n === 1);
-        }
+      // 顺序配对，每页 2 张（行程单/发票/火车票任意组合）
+      const pair = [seq[i]];
+      if (i + 1 < seq.length) pair.push(seq[i + 1]);
+      i += pair.length;
+      const p = out.addPage(A4);
+      const n = pair.length;
+      const gap = margin;
+      // v16：统一上下堆叠排布（发票/行程单一视同仁）；单张时居上（与两张时第一张同位置）
+      const avail = A4[1] - 2 * margin;
+      const slotH = Math.min(14 * PT_PER_CM, (avail - (n - 1) * gap) / n);
+      const slotW = A4[0] - 2 * margin;
+      for (let k = 0; k < n; k++) {
+        const it2 = pair[k];
+        const slotTopY = A4[1] - margin - k * (slotH + gap);
+        const slotBottomY = slotTopY - slotH;
+        drawInSlot(p, it2, slotW, slotH, margin, slotBottomY, A4, n === 1);
       }
     }
 

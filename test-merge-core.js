@@ -122,35 +122,36 @@ async function main() {
   ], {});
   assert(r7 instanceof Uint8Array && r7.length > 1000, '返回 Uint8Array 且非空');
 
-  console.log('\n[9] v127 回归：旋转行程单裁剪（右半列必须保留，裁剪区上方标题必须被裁）');
-  // 合成源：A4 竖版，裁剪区 bbox{x:50,y:300,w:300,h:250}（mbW=300, mbH=250）。
-  // 旋转 cm (0 1 -1 0 250 0) 后：源内容 x_c 映射到设备 y，y_c 映射到设备 x。
-  //  - TITLE：源 y=558 → y_c=258 → 设备 x=250-258=-8（页面外，须被裁）
-  //  - LEFTCOL：源 x=100 → x_c=50 → 设备 y=50（须保留）
-  //  - RIGHT：源 x=310 → x_c=260 → 设备 y=260（mbH=250 < 260 ≤ mbW=300）
-  //    修复版裁剪区设备 y∈[0,mbW]=[0,300] → 保留；转置版裁剪区设备 y∈[0,mbH]=[0,250] → 被裁（右半列丢失）
-  // 用 size8 嵌入字体：4 字符竖排高 32pt，RIGHT 设备 y∈[260,292] ≤ 300 不超页面
+  console.log('\n[9] v128 回归：竖长条行程单旋转 + 裁剪（上部内容保留、标题被裁）');
+  // 合成源：A4 竖版，裁剪区 bbox{x:50,y:300,w:320,h:520}（mbW=320, mbH=520，竖长条）。
+  // v128 旋转判定：半页槽内 s2>s1 → 旋转（竖长条旋转后横放占满槽宽，字更大）。
+  // 旋转 cm (0 1 -1 0 520 0) 后：源内容 x_c 映射到设备 y、y_c 映射到设备 x。
+  //  - TITLE：源 y=850 → y_c=550 > mbH=520 → 设备 x=520-550=-30（页面外，须被裁）
+  //  - UPPER：源 (100,750) → x_c=50、y_c=450 → 设备 (70,50)；
+  //    v127 转置裁剪区设备 x∈[mbH-mbW,mbH]=[200,520] → UPPER x=70 被裁（上部内容丢失）；
+  //    修复版裁剪区设备 x∈[0,mbH]=[0,520] → 保留（回归 v127 修复）
+  //  - LEFT：源 (100,400) → x_c=50、y_c=100 → 设备 (420,50)，恒保留
+  // 用 size8 嵌入字体（旋转后文字高 32pt 不超页面）
   const itDoc = await PDFDocument.create();
   const itFont = await itDoc.embedFont(require('pdf-lib').StandardFonts.Helvetica);
   const itPage = itDoc.addPage([595.28, 841.89]);
-  itPage.drawText('TITLE', { x: 150, y: 558, size: 8, font: itFont });  // 设备 x=-8，须被裁
-  itPage.drawText('LEFTCOL', { x: 100, y: 400, size: 8, font: itFont }); // 设备 y=50，须保留
-  itPage.drawText('RIGHT', { x: 310, y: 400, size: 8, font: itFont });   // 设备 y=260，转置版会裁
+  itPage.drawText('TITLE', { x: 150, y: 850, size: 8, font: itFont });  // 设备 x=-30，须被裁
+  itPage.drawText('UPPER', { x: 100, y: 750, size: 8, font: itFont });  // 设备 x=70，转置版会裁
+  itPage.drawText('LEFT', { x: 100, y: 400, size: 8, font: itFont });   // 设备 x=420，恒保留
   const itBytes = new Uint8Array(await itDoc.save());
-  const cIt = [{ cropByText: true, bbox: { x: 50, y: 300, w: 300, h: 250 }, hCm: 8.82, wCm: 10.58 }];
+  const cIt = [{ cropByText: true, bbox: { x: 50, y: 300, w: 320, h: 520 }, hCm: 18.34, wCm: 11.29 }];
   const r8 = await globalThis.mergeInvoices(PDFDocument, [
     { name: 'it.pdf', bytes: itBytes, type: 'itinerary', train: false, content: cIt },
   ], {});
   const d8 = await PDFDocument.load(r8);
-  assert(d8.getPageCount() === 1, '旋转行程单 → 独占 1 页（实际 ' + d8.getPageCount() + ' 页）');
+  assert(d8.getPageCount() === 1, '竖长条行程单 → 1 页（实际 ' + d8.getPageCount() + ' 页）');
   const pg8 = d8.getPage(0);
   assert(Math.abs(pg8.getWidth() - A4[0]) < 1 && Math.abs(pg8.getHeight() - A4[1]) < 1,
-    '旋转行程单 → 竖版 A4（实际 ' + pg8.getWidth().toFixed(0) + 'x' + pg8.getHeight().toFixed(0) + '）');
-  // 像素级验证（canvas 坐标系：PDF 顶部 = canvas y=0，底部 = y=高）：
-  //  - RIGHT 设备 y∈[260,292] → 输出 PDF y∈[731,802] → canvas y∈[40,111]（页面顶部）
-  //    转置版裁剪区设备 y≤250 把 RIGHT 全切 → canvas 顶部无墨迹（最上墨迹 = LEFTCOL 顶部 canvas y≈450）
-  //  - TITLE 设备 x=-8 → 若裁剪生效则不可见，最左墨迹 = LEFTCOL（输出 x≈377）；
-  //    若裁剪失效（转置版把标题纳入裁剪区）→ TITLE 可见于输出 x≈30
+    '行程单 → 标准竖版 A4（实际 ' + pg8.getWidth().toFixed(0) + 'x' + pg8.getHeight().toFixed(0) + '，不再横向页/旋转整页）');
+  // 像素级验证（canvas 坐标系：PDF 顶部 = canvas y=0）：
+  //  - UPPER 旋转后设备 x=70 → 输出 x≈22.7+70×1.057≈96.7pt（页面左部）
+  //    转置版 UPPER 被裁 → 页面左部 x∈[80,150] 无墨迹（LEFT 在 x≈466）
+  //  - TITLE 设备 x=-30 → 输出 x≈-9（页面外）；最左墨迹应 ≥ 20pt（UPPER/LEFT 均在槽内）
   try {
     const { getDocument } = await import('file:///C:/Users/83406/.workbuddy/binaries/node/workspace/node_modules/pdfjs-dist/legacy/build/pdf.mjs');
     const { createCanvas } = require('@napi-rs/canvas');
@@ -163,6 +164,7 @@ async function main() {
     await pg.render({ canvasContext: ctx, viewport: vp }).promise;
     const data = ctx.getImageData(0, 0, cv.width, cv.height).data;
     let inkMinX = cv.width, inkMaxY = 0, inkMinY = cv.height, inkMaxX = 0;
+    let inkInLeft = 0; // x∈[80,150] 区域墨迹数（UPPER 是否保留）
     for (let y = 0; y < cv.height; y++) {
       const base = y * cv.width * 4;
       for (let x = 0; x < cv.width; x++) {
@@ -172,16 +174,17 @@ async function main() {
           if (x > inkMaxX) inkMaxX = x;
           if (y < inkMinY) inkMinY = y;
           if (y > inkMaxY) inkMaxY = y;
+          if (x >= 80 && x <= 150) inkInLeft++;
         }
       }
     }
     // 墨迹全部在页面边界内
     assert(inkMinX >= 0 && inkMaxX < cv.width && inkMinY >= 0 && inkMaxY < cv.height,
       '合并输出墨迹在页面边界内（x[' + inkMinX + ',' + inkMaxX + '] y[' + inkMinY + ',' + inkMaxY + '] px）');
-    // RIGHT 保留：canvas 顶部应有墨迹（RIGHT 在页面顶部区域）；转置裁剪会裁掉 → 最上墨迹为 LEFTCOL 底部区
-    assert(inkMinY < 200, '右半列保留（最上墨迹 y=' + inkMinY.toFixed(0) + 'px < 200px；转置裁剪会切到 ~450px）');
-    // TITLE 被裁：最左墨迹 = LEFTCOL（输出 x≈377）；TITLE 泄漏会出现在 x≈30
-    assert(inkMinX > 100, '裁剪区上方标题被裁（最左墨迹 x=' + inkMinX.toFixed(0) + 'px > 100px；TITLE 泄漏会在 ~30px）');
+    // UPPER 保留：页面左部 x∈[80,150] 应有墨迹；v127 转置裁剪会裁掉 → 该区域无墨迹
+    assert(inkInLeft > 0, '上部内容保留（左部 x∈[80,150] 墨迹=' + inkInLeft + 'px；转置裁剪会裁掉 UPPER）');
+    // TITLE 被裁：最左墨迹应为 UPPER（输出 x≈96.7）；TITLE 泄漏会在 x≈-9（页面外，被 XObject BBox 裁掉）
+    assert(inkMinX > 20, '裁剪区上方标题被裁（最左墨迹 x=' + inkMinX.toFixed(0) + 'px > 20px）');
   } catch (e) {
     console.log('  SKIP 渲染依赖不可用: ' + e.message);
   }
