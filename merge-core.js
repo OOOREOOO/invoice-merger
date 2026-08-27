@@ -70,11 +70,28 @@
       const box = context.obj([0, 0, mbH, mbW]);
       pg.node.set(getPDFLib().PDFName.of('MediaBox'), box);
       if (cropBox) pg.node.set(getPDFLib().PDFName.of('CropBox'), box);
-      // head：先裁剪到原 MediaBox（剔除 MediaBox 外的隐藏内容，如某些发票的水印/装饰字），再旋转
+      // head：先旋转 90°（内容从横向变竖向），再在【旋转后坐标系】裁剪到新 MediaBox [0,0,mbH,mbW]。
+      // v127 根因修复：裁剪矩形原先写在旋转 cm 之前（“先裁剪后旋转”），但 W n 建立的裁剪区
+      // 固定在定义时刻的设备空间，旋转 cm 之后的图形经新 CTM 映射到设备空间时与裁剪区错位——
+      // 旋转前应被裁掉的标题/姓名栏反而溢出显示（embedPdf 的 XObject BBox 不自动裁剪内容流）。
+      // 正确顺序：cm 旋转 → 再以旋转后尺寸 [0,0,mbH,mbW] 建裁剪路径（此时 CTM 已含旋转，
+      // 裁剪区设备空间与旋转后内容一致）→ 剔除旋转后仍超出新 MediaBox 的隐藏内容。
+      // 裁剪路径用 m/l/h 显式构建（不用 re 快捷方式）：pdf.js 解析 "re W n" 时 constructPath
+      // 被延迟、clip 引用到上一次路径导致裁剪错位（裁掉旋转后表格右列）；显式 m/l/h + h 闭合
+      // 让路径在 clip 前完整定义，裁剪区准确落在旋转后 [0,0,mbH,mbW]。
       // 平移量 = mbY+mbH：原 y=mbY 的内容旋转后 x'=0，y=mbY+mbH → x'=mbH
+      // v127 二次修复：裁剪矩形坐标【转置错误】——旋转 cm (0 1 -1 0 e 0) 把用户点 (X,Y)
+      // 映射到设备 (e-Y, X)，当前裁剪路径 rect (0,0)-(mbH,mbW) 在设备空间覆盖
+      // x∈[mbY, mbY+mbH-mbW+mbH]（实测 [−224,258]），把旋转后应在页面外的
+      // 标题/姓名栏（设备 x<0）与页脚（设备 x>258）全部纳入可见区 → 合并输出标题泄漏溢出。
+      // 正确裁剪区 = 旋转后页面 [0,0,mbH,mbW]（设备空间）：用户空间应为
+      // X∈[0,mbW]、Y∈[mbY, mbY+mbH]，即 rect (0,mbY)-(mbW,mbY+mbH)：
+      //   - 设备 x∈[0,mbH] ← Y∈[mbY,mbY+mbH]（剔除标题/页脚，mbY=0 时即 y_c∈[0,mbH]）
+      //   - 设备 y∈[0,mbW] ← X∈[0,mbW]
       const csHead = context.flateStream(
-        "q\n" + mbX + " " + mbY + " " + mbW + " " + mbH + " re\nW\nn\n" +
-        "0 1 -1 0 " + (mbY + mbH) + " 0 cm\n"
+        "q\n" +
+        "0 1 -1 0 " + (mbY + mbH) + " 0 cm\n" +
+        "0 " + mbY + " m " + mbW + " " + mbY + " l " + mbW + " " + (mbY + mbH) + " l 0 " + (mbY + mbH) + " l h W n\n"
       );
       const csTail = context.flateStream("Q\n");
       // 三态处理：Contents 可能是 PDFArray / 单流 PDFStream / 不存在（扫描件常见单流）

@@ -122,6 +122,70 @@ async function main() {
   ], {});
   assert(r7 instanceof Uint8Array && r7.length > 1000, '返回 Uint8Array 且非空');
 
+  console.log('\n[9] v127 回归：旋转行程单裁剪（右半列必须保留，裁剪区上方标题必须被裁）');
+  // 合成源：A4 竖版，裁剪区 bbox{x:50,y:300,w:300,h:250}（mbW=300, mbH=250）。
+  // 旋转 cm (0 1 -1 0 250 0) 后：源内容 x_c 映射到设备 y，y_c 映射到设备 x。
+  //  - TITLE：源 y=558 → y_c=258 → 设备 x=250-258=-8（页面外，须被裁）
+  //  - LEFTCOL：源 x=100 → x_c=50 → 设备 y=50（须保留）
+  //  - RIGHT：源 x=310 → x_c=260 → 设备 y=260（mbH=250 < 260 ≤ mbW=300）
+  //    修复版裁剪区设备 y∈[0,mbW]=[0,300] → 保留；转置版裁剪区设备 y∈[0,mbH]=[0,250] → 被裁（右半列丢失）
+  // 用 size8 嵌入字体：4 字符竖排高 32pt，RIGHT 设备 y∈[260,292] ≤ 300 不超页面
+  const itDoc = await PDFDocument.create();
+  const itFont = await itDoc.embedFont(require('pdf-lib').StandardFonts.Helvetica);
+  const itPage = itDoc.addPage([595.28, 841.89]);
+  itPage.drawText('TITLE', { x: 150, y: 558, size: 8, font: itFont });  // 设备 x=-8，须被裁
+  itPage.drawText('LEFTCOL', { x: 100, y: 400, size: 8, font: itFont }); // 设备 y=50，须保留
+  itPage.drawText('RIGHT', { x: 310, y: 400, size: 8, font: itFont });   // 设备 y=260，转置版会裁
+  const itBytes = new Uint8Array(await itDoc.save());
+  const cIt = [{ cropByText: true, bbox: { x: 50, y: 300, w: 300, h: 250 }, hCm: 8.82, wCm: 10.58 }];
+  const r8 = await globalThis.mergeInvoices(PDFDocument, [
+    { name: 'it.pdf', bytes: itBytes, type: 'itinerary', train: false, content: cIt },
+  ], {});
+  const d8 = await PDFDocument.load(r8);
+  assert(d8.getPageCount() === 1, '旋转行程单 → 独占 1 页（实际 ' + d8.getPageCount() + ' 页）');
+  const pg8 = d8.getPage(0);
+  assert(Math.abs(pg8.getWidth() - A4[0]) < 1 && Math.abs(pg8.getHeight() - A4[1]) < 1,
+    '旋转行程单 → 竖版 A4（实际 ' + pg8.getWidth().toFixed(0) + 'x' + pg8.getHeight().toFixed(0) + '）');
+  // 像素级验证（canvas 坐标系：PDF 顶部 = canvas y=0，底部 = y=高）：
+  //  - RIGHT 设备 y∈[260,292] → 输出 PDF y∈[731,802] → canvas y∈[40,111]（页面顶部）
+  //    转置版裁剪区设备 y≤250 把 RIGHT 全切 → canvas 顶部无墨迹（最上墨迹 = LEFTCOL 顶部 canvas y≈450）
+  //  - TITLE 设备 x=-8 → 若裁剪生效则不可见，最左墨迹 = LEFTCOL（输出 x≈377）；
+  //    若裁剪失效（转置版把标题纳入裁剪区）→ TITLE 可见于输出 x≈30
+  try {
+    const { getDocument } = await import('file:///C:/Users/83406/.workbuddy/binaries/node/workspace/node_modules/pdfjs-dist/legacy/build/pdf.mjs');
+    const { createCanvas } = require('@napi-rs/canvas');
+    const jd = await getDocument({ data: r8, standardFontDataUrl: 'file:///C:/Users/83406/.workbuddy/binaries/node/workspace/node_modules/pdfjs-dist/standard_fonts/' }).promise;
+    const pg = await jd.getPage(1);
+    const vp = pg.getViewport({ scale: 1 });
+    const cv = createCanvas(Math.ceil(vp.width), Math.ceil(vp.height));
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+    await pg.render({ canvasContext: ctx, viewport: vp }).promise;
+    const data = ctx.getImageData(0, 0, cv.width, cv.height).data;
+    let inkMinX = cv.width, inkMaxY = 0, inkMinY = cv.height, inkMaxX = 0;
+    for (let y = 0; y < cv.height; y++) {
+      const base = y * cv.width * 4;
+      for (let x = 0; x < cv.width; x++) {
+        const i = base + x * 4;
+        if (data[i] < 245 || data[i + 1] < 245 || data[i + 2] < 245) {
+          if (x < inkMinX) inkMinX = x;
+          if (x > inkMaxX) inkMaxX = x;
+          if (y < inkMinY) inkMinY = y;
+          if (y > inkMaxY) inkMaxY = y;
+        }
+      }
+    }
+    // 墨迹全部在页面边界内
+    assert(inkMinX >= 0 && inkMaxX < cv.width && inkMinY >= 0 && inkMaxY < cv.height,
+      '合并输出墨迹在页面边界内（x[' + inkMinX + ',' + inkMaxX + '] y[' + inkMinY + ',' + inkMaxY + '] px）');
+    // RIGHT 保留：canvas 顶部应有墨迹（RIGHT 在页面顶部区域）；转置裁剪会裁掉 → 最上墨迹为 LEFTCOL 底部区
+    assert(inkMinY < 200, '右半列保留（最上墨迹 y=' + inkMinY.toFixed(0) + 'px < 200px；转置裁剪会切到 ~450px）');
+    // TITLE 被裁：最左墨迹 = LEFTCOL（输出 x≈377）；TITLE 泄漏会出现在 x≈30
+    assert(inkMinX > 100, '裁剪区上方标题被裁（最左墨迹 x=' + inkMinX.toFixed(0) + 'px > 100px；TITLE 泄漏会在 ~30px）');
+  } catch (e) {
+    console.log('  SKIP 渲染依赖不可用: ' + e.message);
+  }
+
   console.log('\n' + (failed === 0 ? '全部通过 ✅' : failed + ' 项失败 ❌'));
   process.exit(failed === 0 ? 0 : 1);
 }
