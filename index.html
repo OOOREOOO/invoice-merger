@@ -225,8 +225,8 @@ window.scrollTo(0, 0);
     <div class="tip" id="previewTip">正在生成预览…</div>
   </div>
 
-  <script src="./pdf.min.js?v=129"></script>
-  <script src="./merge-core.js?v=129"></script>
+  <script src="./pdf.min.js?v=130"></script>
+  <script src="./merge-core.js?v=130"></script>
   <script>
     const PT_PER_CM = 28.3464567;
     let PDFDocument = null;
@@ -288,7 +288,7 @@ window.scrollTo(0, 0);
         PDFDocument = window.PDFLib.PDFDocument;
         return Promise.resolve(PDFDocument);
       }
-      return loadScript('./pdf-lib.min.js?v=129').then(() => {
+      return loadScript('./pdf-lib.min.js?v=130').then(() => {
         PDFDocument = window.PDFLib && window.PDFLib.PDFDocument;
         if (!PDFDocument) throw new Error('PDF 生成库加载失败');
         return PDFDocument;
@@ -297,7 +297,7 @@ window.scrollTo(0, 0);
 
     function ensureJsQR() {
       if (window.jsQR) return Promise.resolve(window.jsQR);
-      return loadScript('./jsqr.min.js?v=129').then(() => {
+      return loadScript('./jsqr.min.js?v=130').then(() => {
         if (!window.jsQR) throw new Error('二维码识别库加载失败');
         return window.jsQR;
       });
@@ -305,7 +305,7 @@ window.scrollTo(0, 0);
 
     function ensureJSZip() {
       if (window.JSZip) return Promise.resolve(window.JSZip);
-      return loadScript('./jszip.min.js?v=129').then(() => {
+      return loadScript('./jszip.min.js?v=130').then(() => {
         if (!window.JSZip) throw new Error('压缩打包库加载失败');
         return window.JSZip;
       });
@@ -746,13 +746,16 @@ window.scrollTo(0, 0);
                   if (summaryItem && titleItem.pdfY > summaryItem.pdfY) topAnchor = summaryItem;
                 }
                 const topCanvas = tfI[3] * topAnchor.pdfY + tfI[5] - (topAnchor.h || 12) - 0.1 * PT_PER_CM; // 锚点文字顶部 + 留白
-                const bodyBottomCanvas = tfI[3] * bodyBottomPdfY + tfI[5] + 0.15 * PT_PER_CM;               // 最后文本行底部 + 0.15cm
+                // v130：底部余量 0.15cm → 0.45cm——实测滴滴行程单表格底边框线在
+                // 「最后文本行底部 + 0.15cm」下方 6.8pt（0.24cm），旧余量会把表格底部
+                // 横边框线裁掉（垂直分割线底部截断）；+0.45cm 覆盖边框线并留 0.21cm 保险。
+                const bodyBottomCanvas = tfI[3] * bodyBottomPdfY + tfI[5] + 0.45 * PT_PER_CM;               // 最后文本行底部 + 0.45cm
                 // 顶部：锚点上方确有大段内容（>0.3cm）才上移；页面顶部即锚点时保持不动
                 if (topCanvas > minY + 0.3 * PT_PER_CM && topCanvas < maxY) {
                   minY = Math.round(topCanvas);
                   cropByText = true;
                 }
-                // 底部：最后文本行下方确有空白（>0.1cm）才收缩；紧贴文本行的表格线由 +0.15cm 余量保留
+                // 底部：最后文本行下方确有空白（>0.1cm）才收缩；紧贴文本行的表格线由 +0.45cm 余量保留（v130）
                 if (bodyBottomCanvas > minY && maxY - bodyBottomCanvas > 0.1 * PT_PER_CM) {
                   maxY = Math.round(bodyBottomCanvas);
                   cropByText = true;
