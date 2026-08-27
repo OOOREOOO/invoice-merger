@@ -288,3 +288,35 @@ NODE_PATH=<node_modules 路径> node test-merge-core.js
   - monkey-patch `window.open` 计数：点击打印后 `iframeCreated=true`、`openCount=0`（直接打印，未跳窗）
   - test-merge-core 16 项 PASS；内联 JS 语法 3 块全过
 - 版本号 v136 → v137（资源 URL `?v=137`）
+
+## v138 变更
+
+- **删除打印按钮**：用户决定放弃内置打印功能，改为提示用户在浏览器内置 PDF viewer 右上角点击打印图标（更稳定、避开 PDF.js print overlay）
+  - HTML：删除 `<button id="btnPrint">` 打印按钮（fabbar 只剩「下载合并 PDF」「下载分类文件夹」两个按钮）
+  - JS：删除 updateGenerateBtn 中 btnPrint 显隐块、合并成功后 btnPrint 显示、onclick 绑定块（含 v134-v137 全部打印逻辑）
+- **金额阿拉伯数字扩大 50%**：`font-size` 20px → **30px**；`font-weight` 900 → **800**（衬线粗体过黑，无衬线 800 更平衡）
+- **字体务实化**（用户先要求"更有美感"换衬线，再回退）：
+  - 改用系统无衬线 `-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif`
+  - 配 `font-variant-numeric: tabular-nums`（数字等宽对齐）+ `font-weight: 800` + `letter-spacing: .01em`
+  - 财务发票风格，简洁清晰，无花哨衬线装饰
+- **总金额胶囊 padding 适配 30px 大数字**：5px 12px 5px 14px → 7px 16px 7px 18px；gap 5 → 7
+- **合并后 toast 两行提示**（白色背景黑色文字，duration 4200ms）：
+  - **第一行**：「可在 PDF 组件窗口右上角点击图标网页打印」
+  - 第二行：「合并完成：共 N 页 A4」
+  - 利用 `.toast` 已有的 `white-space: pre-line`（`\n` 换行）
+- **验证**：
+  - puppeteer+Edge headless（1440×900）：`btnPrint` 已不存在；actions 仅 2 按钮且同排（top 一致）；金额 `font-size=30px`、衬线去除、字体=无衬线系统栈
+  - puppeteer+Edge headless（412×915 移动端）：同 2 按钮布局、toast 两行提示正常
+  - 合并后 toast textContent 含「可在 PDF 组件窗口右上角点击图标网页打印」「合并完成：共 N 页 A4」
+  - test-merge-core 16 项 PASS；内联 JS 语法 3 块全过
+- 版本号 v137 → v138（资源 URL `?v=138`）
+
+## v139 变更
+
+- **删除「总金额」三字**：用户反馈胶囊文字仅保留金额数字"¥800.00"
+  - HTML 模板：`<span class="tl">总金额</span>` 删除，胶囊内只剩 `<span class="amt">¥xxx.xx</span>`
+  - `.tl` CSS 规则保留（未引用不影响）
+- **阿拉伯数字缩小 30%**：`font-size` 30px → **21px**（保留 800 字重 + 无衬线务实字体 + tabular-nums）
+- **胶囊紧凑化**：删除 .tl 后 `gap` 7px → 0；`padding` 7px 16px 7px 18px → 7px 18px（左右对称且留出余额数字呼吸空间）
+- **验证**：puppeteer+Edge headless 1440×900——`totalText="¥800.00"`、`hasTL=false`、`amtFontSize=21px`、无衬线系统字体栈生效；test-merge-core 16 项 PASS；内联 JS 3 块全过
+- 版本号 v138 → v139（资源 URL `?v=139`）
