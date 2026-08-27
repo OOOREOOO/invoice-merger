@@ -1,0 +1,6 @@
+# macOS AppleDouble 资源分支垃圾文件（._ 前缀）
+._*
+
+# 本地临时验证/调试脚本
+__*.js
+cdp_verify*.js
