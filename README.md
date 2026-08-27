@@ -264,3 +264,27 @@ NODE_PATH=<node_modules 路径> node test-merge-core.js
   - 合并后点击打印按钮：iframe[title="print-frame"] 创建成功，`src` 为 blob URL
   - `test-merge-core.js` 16 项 PASS；内联 JS 语法 3 块全过
 - 版本号 v135 → v136（资源 URL `?v=136`）
+
+## v137 变更
+
+- **修复 actions 按钮折行（一排排布）**：用户反馈 fabbar 内「打印」按钮掉到第二排；同时要求「总金额」缩 50%、金额缩 30%；并要求打印按钮点击**直接出现打印对话框，不要跳出新窗口**
+  - 根因：通用 `.actions { ... flex-wrap: wrap }` 规则影响；641px+ 的 `.fabbar .actions { flex-direction: row }` 覆盖未含 nowrap，actions 宽度被 summary 320px 压缩成 138px，三个按钮被强制 wrap 成纵向
+  - 修复：
+    - 640px 内 grid 3列 → `display: flex; flex-wrap: nowrap; gap: 6px`，按钮 `flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis;`
+    - 641px+ `.fabbar .actions` 增加 `flex: 1 1 auto; flex-wrap: nowrap; padding: 4px 6px;`，按钮 `flex: 0 1 auto; padding: 10px 12px`（按文字宽度显示不被截断）
+    - `.fabbar .actions .btn.primary`（640px 内）由 grid-column 1/-1 → `flex: 1 1 0`
+    - 641px+ `.fabbar .summary` 改 `flex: 0 1 auto; min-width: 0`，让 summary 不再挤压 actions
+- **总金额/金额按比例缩小**：
+  - `.fabbar .summary .total .tl` `font-size: 13px` → **7px**（缩 50%）
+  - `.fabbar .summary .total .amt` `font-size: 28px` → **20px**（缩 30%）
+  - total 容器 padding 5px 12px 5px 14px、gap 5px（紧凑配比）
+- **打印按钮直接弹出对话框（不再跳出新窗口）**：v136 兜底用 `window.open(lastBlobUrl, '_blank')` 触发新标签页，用户反馈跳出窗口不符合预期
+  - 移除 `window.open` 兜底；改为 iframe onload → `contentWindow.focus()+print()`，若 onload 未触发 1.8s 后重试一次（仍只 print 不 open）
+  - 极端兜底：仅当 print 抛异常才 toast 提示「请在新标签页打开后 Ctrl+P 打印」，仍不主动开窗
+- **验证**：
+  - puppeteer+Edge headless 768px：三按钮同排（top 925）、等宽/按内容（111/119/68px），文字完整「下载合并 PDF/下载分类文件夹/打印」
+  - puppeteer+Edge headless 412px 移动端：三按钮同排 top 788
+  - 总金额 `tl=7px`、`amt=20px/font-weight:900`
+  - monkey-patch `window.open` 计数：点击打印后 `iframeCreated=true`、`openCount=0`（直接打印，未跳窗）
+  - test-merge-core 16 项 PASS；内联 JS 语法 3 块全过
+- 版本号 v136 → v137（资源 URL `?v=137`）
