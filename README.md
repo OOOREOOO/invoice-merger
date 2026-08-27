@@ -223,3 +223,24 @@ NODE_PATH=<node_modules 路径> node test-merge-core.js
   - **@media print 打印视图**：只打印票据清单——「票据分类」列表（分区+金额）+「网约车时间线」（行程明细）；隐藏操作栏、上传拖拽区、合并预览、toast、天气等；卡片去玻璃效果、`break-inside: avoid` 防跨页截断、白底打印
   - **验证**：puppeteer + Edge headless——初始按钮 hidden+disabled、onclick 已绑定、emulateMediaType('print') 下 fabbar/dropCard/resultCard display:none 且 timelineCard/fileInfoCard display:block、body 无背景图；页面无 JS 错误
 - 版本号 v133 → v134（资源 URL `?v=134`）
+
+## v135 变更
+
+- **打印按钮与下载按钮左右排布**：用户反馈打印按钮与上方按钮未正常左右排布，且总金额框留白过多
+  - 移动端 `.fabbar .actions` 由 2 列 grid 改为 **3 列 grid**（`1fr 1fr 1fr`），「下载合并 PDF / 下载分类文件夹 / 打印」三按钮同一行左右排布
+- **总金额框样式参考「加载百分比数字」 redesigned**：
+  - 背景：`linear-gradient(135deg, #1b2836, #0e1822)`（深色胶囊）
+  - 边框：`1.5px solid rgba(240,83,28,.85)`（橙红描边）
+  - 圆角：`999px`；padding 收窄为 `5px 11px 5px 13px`
+  - 宽度：`width: fit-content` + `display: inline-flex`，按金额内容自适应，消除金额右侧过多留白
+  - 标签「总金额」：`rgba(255,255,255,.72)` 浅白；金额数字：`#FF6A38` 橙色高亮、字重 800
+  - 移除了旧版的浅灰/浅橙底、大圆角、宽 padding 样式
+- **打印内容改为合并后的 PDF**：
+  - 打印按钮从 `window.print()`（网页打印）改为通过隐藏 iframe 加载 `lastBlobUrl`（合并 PDF blob URL），调用 `contentWindow.print()` 触发浏览器 PDF 打印对话框
+  - 按钮 title 同步改为「打印合并后的 PDF 文件」
+  - 移除 v134 专为网页打印引入的 `@media print` 规则
+- **验证**：
+  - puppeteer + Edge headless：移动端 actions 为三列 grid；导入发票后总金额框深色胶囊、宽度按内容自适应（¥800.00 → 151.6px）
+  - 合并后打印按钮显示可用；点击打印按钮 iframe 数量 1→2，确认创建了隐藏 iframe 并加载合并 PDF
+  - test-merge-core 16 项 PASS；内联 JS 语法 3 块全过
+- 版本号 v134 → v135（资源 URL `?v=135`）
