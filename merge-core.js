@@ -284,7 +284,9 @@
       const p = out.addPage(A4);
       const n = pair.length;
       const gap = margin;
-      // v16：统一上下堆叠排布（发票/行程单一视同仁）；单张时居上（与两张时第一张同位置）
+      // v129：内容在槽位内恒居上排布（topAlign=true）——每张票（含行程单）在各自半页
+      // 槽位内顶部对齐，不再垂直居中（此前 n===1 才居上、n===2 时两张各自槽内垂直居中，
+      // 矮内容行程单出现上下留白居中观感差）；报销单打印惯例内容靠上、下方自然留白。
       const avail = A4[1] - 2 * margin;
       const slotH = Math.min(14 * PT_PER_CM, (avail - (n - 1) * gap) / n);
       const slotW = A4[0] - 2 * margin;
@@ -292,7 +294,7 @@
         const it2 = pair[k];
         const slotTopY = A4[1] - margin - k * (slotH + gap);
         const slotBottomY = slotTopY - slotH;
-        drawInSlot(p, it2, slotW, slotH, margin, slotBottomY, A4, n === 1);
+        drawInSlot(p, it2, slotW, slotH, margin, slotBottomY, A4, true);
       }
     }
 
