@@ -214,3 +214,12 @@ NODE_PATH=<node_modules 路径> node test-merge-core.js
   - **验证**：C.pdf 解析 0 → **9 笔**，金额合计 151.36 元与票面「共9笔行程，合计151.36元」吻合；A（1笔 17.60）/B（1笔 19.80）/T3（1笔 24.58）回归正常；`test-merge-core.js` 16 项 PASS；内联 JS 语法 3 块全过
   - **分析方法沉淀**：行程单解析失败先看 flat 文本里时间/车型是否被换行拆项（"21: 52"、"惊喜 特价"），再检查 ENTRY_RE 锚定数 vs 票面笔数
 - 版本号 v132 → v133（资源 URL `?v=133`）
+
+## v134 变更
+
+- **新增「打印」按钮（网页打印票据清单）**：合并成功后操作栏出现「打印」按钮（下载合并 PDF / 下载分类文件夹 旁），点击触发 `window.print()`
+  - **按钮样式**：与 dlMerged/dlZip 一致（ghost 圆角、黑色文字、打印机图标），初始隐藏
+  - **显隐逻辑**：合并成功（mergedOnce）后显示可用；清空/全部取消勾选时隐藏重置（与 dlZip 同逻辑）
+  - **@media print 打印视图**：只打印票据清单——「票据分类」列表（分区+金额）+「网约车时间线」（行程明细）；隐藏操作栏、上传拖拽区、合并预览、toast、天气等；卡片去玻璃效果、`break-inside: avoid` 防跨页截断、白底打印
+  - **验证**：puppeteer + Edge headless——初始按钮 hidden+disabled、onclick 已绑定、emulateMediaType('print') 下 fabbar/dropCard/resultCard display:none 且 timelineCard/fileInfoCard display:block、body 无背景图；页面无 JS 错误
+- 版本号 v133 → v134（资源 URL `?v=134`）
