@@ -190,3 +190,14 @@ NODE_PATH=<node_modules 路径> node test-merge-core.js
 - **取消勾选发票 → 金额栏扣减**：核心总金额（updateGenerateBtn）本就按 `f.include` 过滤；v131 补齐 render() 分区小计过滤（`sumList = list.filter(f => f.include && ...)`）——取消勾选后分区小计与右侧总金额同步扣减，视觉一致
 - **验证**：行程单排序（稳定排序，非行程单保序）+ 金额扣减（勾选 380 / 取消后扣减）Node 断言通过；内联 JS 语法检查 3 块全过；`test-merge-core.js` 16 项 PASS
 - 版本号 v130 → v131（资源 URL `?v=131`）
+
+## v132 变更
+
+- **首页一屏显示（布局垂直压缩）**：用户反馈首页高度超出单屏（右侧出现滚动条），要求「上传待归档」高度缩短一倍、整页一屏显示
+  - `.wrap` 内边距：顶部 32px → 14px、底部 130px → 96px（桌面端 140px → 96px 覆盖同步）
+  - `header.app`：标题 30px → 23px、副文案 13.5px → 12px、行高 1.6 → 1.45、margin-bottom 24px → 10px；品牌图标 42px → 30px、右上角按钮压缩
+  - `.card` 内边距 22px → 14px；`.v3-panel-head` margin-bottom 18px → 8px、标题 19px → 16px、徽标 padding 收窄
+  - `.drop`（拖拽区）内边距 38px → 14px（高度减半核心）、图标 46px → 30px、主文字 17px → 14px、说明 13px → 11.5px、按钮区 margin-top 16px → 8px
+  - `.dz-hint` margin-top 14px → 6px、字号 12px → 11.5px；手机端 `.wrap` 底部 190px → 130px
+  - **实测**：1366×768 / 1440×900 / 1920×1080 三种视口 puppeteer-core + Edge headless 断言 `scrollHeight === innerHeight`（hasVScroll=false，无垂直滚动条）；dropCard 高度 350px（原 ~500px+）、drop 拖拽区 242px（高度缩短一倍达成）；页面底部保留适量留白不顶底
+- 版本号 v131 → v132（资源 URL `?v=132`）
