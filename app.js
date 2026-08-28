@@ -1687,16 +1687,7 @@ function parseGaodeTrips(text, defaultDate, cells) {
       pop.classList.add('show');
       img.style.opacity = '0.4';
       tip.textContent = '正在生成预览…';
-      // 定位：行右侧或左侧（避免超出视口）
-      const rect = rowEl.getBoundingClientRect();
-      const popW = Math.min(400, window.innerWidth - 24);  // v87：预览放大至 400px，窄视口自适应收缩
-      let left = rect.right + 12;
-      if (left + popW > window.innerWidth - 12) left = rect.left - popW - 12;
-      let top = rect.top;
-      if (top < 12) top = 12;
-      pop.style.left = left + 'px';
-      pop.style.top = top + 'px';
-
+      // v153：预览改为视口右下角固定定位（由 CSS .preview-pop 控制），避免 hover 列表底部行时下方不可见
       clearTimeout(previewTimer);
       previewTimer = setTimeout(async () => {
         // v146：悬浮缩略图延迟到空闲期渲染——快速划过多个卡片时（鼠标扫过整列）

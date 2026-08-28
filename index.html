@@ -550,6 +550,17 @@ header.app h1 .v3-brand {
   background: rgba(59, 130, 246, 0.24);
 }
 
+/* v153: 悬浮预览固定在视口右下角（避开底部 fabbar），避免 hover 列表底部行时下方不可见 */
+.preview-pop{
+  right: 20px !important;
+  bottom: 96px !important;
+  left: auto !important;
+  top: auto !important;
+  width: min(360px, calc(100vw - 40px)) !important;
+  max-height: calc(100vh - 140px) !important;
+  overflow: auto !important;
+}
+
 </style>
 <style>
 /* ================= 方案一 · 启动场景（含四段上传动画；总背景沿用页面现状，不覆盖 body） ================= */
@@ -981,10 +992,10 @@ header.app h1 .v3-brand {
     <div class="tip" id="previewTip">正在生成预览…</div>
   </div>
 
-  <script defer src="./pdf.min.js?v=152"></script>
-  <script defer src="./merge-core.js?v=152"></script>
-  <script defer src="./inline-cmaps.js?v=152"></script>
-  <script defer src="./app.js?v=152"></script>
+  <script defer src="./pdf.min.js?v=153"></script>
+  <script defer src="./merge-core.js?v=153"></script>
+  <script defer src="./inline-cmaps.js?v=153"></script>
+  <script defer src="./app.js?v=153"></script>
 
 
 
