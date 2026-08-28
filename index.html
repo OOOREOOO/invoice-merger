@@ -550,19 +550,15 @@ header.app h1 .v3-brand {
   background: rgba(59, 130, 246, 0.24);
 }
 
-/* v154: 悬浮预览水平居中（视口中线）并放大 10%（360→396） */
+/* v155: 悬浮预览左侧边缘对准视口水平中线（left:50%），右侧留边 24px，宽度 396 */
 .preview-pop{
   right: auto !important;
   left: 50% !important;
   top: auto !important;
   bottom: 110px !important;
-  width: min(396px, calc(100vw - 40px)) !important;
+  width: min(396px, calc(50vw - 24px)) !important;
   max-height: calc(100vh - 160px) !important;
   overflow: auto !important;
-  transform: translate(-50%, 8px) !important;
-}
-.preview-pop.show{
-  transform: translate(-50%, 0) !important;
 }
 
 </style>
@@ -996,10 +992,10 @@ header.app h1 .v3-brand {
     <div class="tip" id="previewTip">正在生成预览…</div>
   </div>
 
-  <script defer src="./pdf.min.js?v=154"></script>
-  <script defer src="./merge-core.js?v=154"></script>
-  <script defer src="./inline-cmaps.js?v=154"></script>
-  <script defer src="./app.js?v=154"></script>
+  <script defer src="./pdf.min.js?v=155"></script>
+  <script defer src="./merge-core.js?v=155"></script>
+  <script defer src="./inline-cmaps.js?v=155"></script>
+  <script defer src="./app.js?v=155"></script>
 
 
 
