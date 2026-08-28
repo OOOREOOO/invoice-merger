@@ -589,17 +589,18 @@ header.app h1 .v3-brand {
 /* 状态①A · 资源准备中（首次较慢，PDF 库加载中） */
 .ls-preparing{display:flex;flex-direction:column;align-items:center;gap:14px;padding:42px 0 30px;min-height:240px;justify-content:center;text-align:center;animation:lsStageIn .45s cubic-bezier(.16,1,.3,1) both;}
 .ls-preparing.hidden{display:none;}
-.ls-prep-spin{width:42px;height:42px;display:grid;place-items:center;color:var(--brand);overflow:visible;}
-.ls-hourglass{width:36px;height:36px;overflow:visible;display:block;}
-.ls-hourglass .hg-glass{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round;transform-box:fill-box;transform-origin:50% 50%;animation:hgPulse 2.2s ease-in-out infinite;}
+.ls-prep-spin{width:42px;height:42px;display:grid;place-items:center;overflow:visible;}
+.ls-hourglass{width:38px;height:38px;overflow:visible;display:block;animation:hgFlip 3s ease-in-out infinite;}
+.ls-hourglass .hg-glass{transform-box:fill-box;transform-origin:50% 50%;animation:hgPulse 3s ease-in-out infinite;}
 .ls-hourglass .hg-sand-top,.ls-hourglass .hg-sand-bot{transform-box:fill-box;}
-.ls-hourglass .hg-sand-top{transform-origin:50% 0%;animation:hgSandTop 2.2s cubic-bezier(.55,0,.85,.35) infinite;}
-.ls-hourglass .hg-sand-bot{transform-origin:50% 100%;animation:hgSandBot 2.2s cubic-bezier(.15,.7,.4,1) infinite;}
-.ls-hourglass .hg-drop{transform-box:fill-box;animation:hgDrop 2.2s linear infinite;}
-@keyframes hgSandTop{0%{transform:scaleY(1);}88%,100%{transform:scaleY(.02);}}
-@keyframes hgSandBot{0%,12%{transform:scaleY(0);}100%{transform:scaleY(1);}}
-@keyframes hgDrop{0%,14%{transform:translateY(0);opacity:0;}20%{opacity:1;}78%{transform:translateY(0);opacity:1;}90%{transform:translateY(11px);opacity:0;}100%{transform:translateY(11px);opacity:0;}}
-@keyframes hgPulse{0%,100%{transform:scale(1);opacity:.92;}50%{transform:scale(1.07);opacity:1;}}
+.ls-hourglass .hg-sand-top{transform-origin:50% 0%;animation:hgSandTop 3s cubic-bezier(.5,0,.8,.35) infinite;}
+.ls-hourglass .hg-sand-bot{transform-origin:50% 100%;animation:hgSandBot 3s cubic-bezier(.2,.7,.45,1) infinite;}
+.ls-hourglass .hg-drop{transform-box:fill-box;animation:hgDrop 3s linear infinite;}
+@keyframes hgFlip{0%,36%{transform:rotate(0);}48%{transform:rotate(180deg);}84%,100%{transform:rotate(360deg);}}
+@keyframes hgSandTop{0%{transform:scaleY(1);}36%{transform:scaleY(.02);}48%{transform:scaleY(.02);}84%{transform:scaleY(1);}100%{transform:scaleY(1);}}
+@keyframes hgSandBot{0%{transform:scaleY(.02);}36%{transform:scaleY(1);}48%{transform:scaleY(1);}84%{transform:scaleY(.02);}100%{transform:scaleY(.02);}}
+@keyframes hgDrop{0%,12%{transform:translateY(0);opacity:0;}18%{opacity:1;}34%{transform:translateY(8px);opacity:1;}40%,52%{transform:translateY(8px);opacity:0;}58%{transform:translateY(0);opacity:0;}64%{opacity:1;}80%{transform:translateY(8px);opacity:1;}88%,100%{transform:translateY(8px);opacity:0;}}
+@keyframes hgPulse{0%,100%{transform:scale(1);opacity:.94;}50%{transform:scale(1.04);opacity:1;}}
 .ls-prep-title{font-size:17px;font-weight:700;color:#1A1A2E;}
 .ls-prep-desc{font-size:12.5px;color:#8A8A9A;letter-spacing:.2px;line-height:1.6;max-width:340px;}
 
@@ -778,16 +779,32 @@ header.app h1 .v3-brand {
 
         <!-- 状态①A：资源准备中（首次较慢，PDF 库加载中） -->
         <div class="ls-preparing" id="lsPreparing">
-          <svg class="ls-prep-spin ls-hourglass" viewBox="0 0 40 40" aria-hidden="true">
-            <defs>
-              <clipPath id="hgTopClip"><path d="M9 5 H31 L20 20 Z"/></clipPath>
-              <clipPath id="hgBotClip"><path d="M20 20 L31 35 H9 Z"/></clipPath>
-            </defs>
-            <path class="hg-glass" d="M9 5 H31 L20 20 L31 35 H9 L20 20 Z"/>
-            <g clip-path="url(#hgTopClip)"><rect class="hg-sand-top" x="9" y="5" width="22" height="15" fill="currentColor" opacity=".88"/></g>
-            <g clip-path="url(#hgBotClip)"><rect class="hg-sand-bot" x="9" y="20" width="22" height="15" fill="currentColor" opacity=".88"/></g>
-            <circle class="hg-drop" cx="20" cy="20.5" r="1.3" fill="currentColor"/>
-          </svg>
+          <div class="ls-prep-spin" aria-hidden="true">
+            <svg class="ls-hourglass" viewBox="0 0 48 48">
+              <defs>
+                <linearGradient id="hgGlass" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#A6DFF7"/><stop offset="1" stop-color="#7FB8E8"/>
+                </linearGradient>
+                <linearGradient id="hgSandA" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#FFC46B"/><stop offset="1" stop-color="#F59E4C"/>
+                </linearGradient>
+                <linearGradient id="hgSandB" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#FFE0A3"/><stop offset="1" stop-color="#F7B955"/>
+                </linearGradient>
+                <clipPath id="hgTopClip"><path d="M12 8 H36 L24 24 Z"/></clipPath>
+                <clipPath id="hgBotClip"><path d="M24 24 L36 40 H12 Z"/></clipPath>
+              </defs>
+              <path class="hg-glass" d="M12 8 H36 L24 24 L36 40 H12 L24 24 Z" fill="url(#hgGlass)" fill-opacity=".55" stroke="#5B93C4" stroke-width="1.5" stroke-linejoin="round"/>
+              <rect x="9.5" y="4.6" width="29" height="4.4" rx="2.2" fill="#C79A63"/>
+              <rect x="9.5" y="39" width="29" height="4.4" rx="2.2" fill="#C79A63"/>
+              <rect x="9.5" y="4.6" width="29" height="4.4" rx="2.2" fill="none" stroke="#8A6038" stroke-width="1"/>
+              <rect x="9.5" y="39" width="29" height="4.4" rx="2.2" fill="none" stroke="#8A6038" stroke-width="1"/>
+              <rect x="21.4" y="21.2" width="5.2" height="5.6" rx="1.8" fill="#D9A05F" stroke="#8A6038" stroke-width="1"/>
+              <g clip-path="url(#hgTopClip)"><rect class="hg-sand-top" x="12" y="8" width="24" height="16" fill="url(#hgSandA)"/></g>
+              <g clip-path="url(#hgBotClip)"><rect class="hg-sand-bot" x="12" y="24" width="24" height="16" fill="url(#hgSandB)"/></g>
+              <circle class="hg-drop" cx="24" cy="24.8" r="1.5" fill="#FFF3D6"/>
+            </svg>
+          </div>
           <div class="ls-prep-title">资源准备中</div>
           <div class="ls-prep-desc">首次加载较慢，请稍候…</div>
         </div>
@@ -964,10 +981,10 @@ header.app h1 .v3-brand {
     <div class="tip" id="previewTip">正在生成预览…</div>
   </div>
 
-  <script defer src="./pdf.min.js?v=151"></script>
-  <script defer src="./merge-core.js?v=151"></script>
-  <script defer src="./inline-cmaps.js?v=151"></script>
-  <script defer src="./app.js?v=151"></script>
+  <script defer src="./pdf.min.js?v=152"></script>
+  <script defer src="./merge-core.js?v=152"></script>
+  <script defer src="./inline-cmaps.js?v=152"></script>
+  <script defer src="./app.js?v=152"></script>
 
 
 
