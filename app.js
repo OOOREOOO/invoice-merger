@@ -103,7 +103,8 @@
       function showComplete(allFiles) {
         show(doneEl);
         const usable = (allFiles || []).filter(f => f && f.include && !f.error);
-        const total = usable.reduce((s, f) => s + (f.amount || 0), 0);
+        const amountCategories = new Set(['train', 'flight', 'ridehail', 'transit', 'hotel', 'meal', 'invoice']);
+        const total = usable.filter(f => amountCategories.has(f.docType)).reduce((s, f) => s + (f.amount || 0), 0);
         if (doneSummaryEl) {
           doneSummaryEl.innerHTML = '<span class="ls-done-num">' + usable.length + '</span> 张票据 · 合计 <span class="ls-done-amt">¥' + total.toFixed(2) + '</span>';
         }
