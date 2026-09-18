@@ -17,6 +17,7 @@
  *        thresholdCm : number  (内容高度超过该值 cm 的发票独占一页，默认 14)
  *        marginMm   : number  (A4 页边距，单位 mm，默认 8)
  *        isTrain    : (name:string)=>boolean  (兜底：无法提取文字时按文件名关键字识别)
+ *        trainDouble: boolean (火车票是否加印双份；默认 false —— 只打印 1 份)
  *     }
  *   说明：
  *     - “小发票”的判定依据是【实际内容高度】（去掉四周空白），而非整页 PDF 高度。
@@ -184,7 +185,7 @@
     const thresholdCm = opts.thresholdCm != null ? opts.thresholdCm : 14;
     const margin = (opts.marginMm != null ? opts.marginMm : 8) * PT_PER_MM;
     const isTrain = opts.isTrain || defaultIsTrain;
-    const trainDouble = opts.trainDouble !== false;  // v24：火车票加印默认开启（默认双份打印）
+    const trainDouble = opts.trainDouble === true;  // v156：火车票默认只打印 1 份；trainDouble:true 才加印双份
 
     if (!files || files.length === 0) return null;
 
@@ -263,7 +264,7 @@
       });
     }
 
-    // 2) 火车票加印（默认开启双份；opts.trainDouble=false 可关闭）
+    // 2) 火车票加印（v156：默认关闭 —— 火车票只打印 1 份；opts.trainDouble=true 才加印双份）
     const seq = [];
     for (const it of items) {
       seq.push(it);

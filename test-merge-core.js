@@ -7,7 +7,8 @@
  * 覆盖场景（依据 merge-core.js 布局算法 v114+）：
  *   1. 两张小票（内容高 < 14cm）→ 2-up 拼版 1 页
  *   2. 一张大票（内容高 > 14cm）→ 独占 1 页（缩放至 ≤14cm 槽位）
- *   3. 火车票 → 加印双份（trainDouble 默认 true）→ 2 页
+ *   3. 火车票 → v156 起默认只打印 1 份（trainDouble 默认 false）→ 1 页 1 份
+ *      （trainDouble:true 可显式加印双份，作为保留的旧行为单独回归）
  *   4. 空输入 → 返回 null
  *   5. 组合：输出可被 pdf-lib 重新打开且页数符合预期
  */
@@ -24,6 +25,38 @@ function assert(cond, msg) {
     failed++;
     console.error('  FAIL ' + msg);
   }
+}
+
+/*
+ * v156 新增：统计输出 PDF 中「票据绘制次数」——
+ * 每张票在页面上落位都会产生一次 drawPage，序列化为内容流里的 `Do` 操作符。
+ * 于是：单份 = 1 次 / 票，加印双份 = 2 次 / 票。用它可精确区分「一份」与「两份」，
+ * 而不依赖页数（双份是同页叠放两张，页数恒为 1，无法用页数判定）。
+ */
+const zlib = require('zlib');
+function countDoOperators(doc) {
+  let n = 0;
+  for (const page of doc.getPages()) {
+    const contents = page.node.Contents();
+    const refs = contents ? (contents.asArray ? contents.asArray() : [contents]) : [];
+    for (const ref of refs) {
+      const stream = doc.context.lookup(ref);
+      if (!stream || typeof stream.getContents !== 'function') continue;
+      let raw = Buffer.from(stream.getContents());
+      // pdf-lib 可能以 FlateDecode 写入内容流；zlib 头 0x78 时先解压
+      if (raw.length > 2 && raw[0] === 0x78) {
+        try { raw = zlib.inflateSync(raw); } catch (e) { /* 未压缩，原样使用 */ }
+      }
+      const s = raw.toString('latin1');
+      n += (s.match(/(?:^|[\s\]>])Do(?:[\s\[<]|$)/g) || []).length;
+    }
+  }
+  return n;
+}
+async function countTicketDraws(PDFDocument, files, opts) {
+  const bytes = await globalThis.mergeInvoices(PDFDocument, files, opts);
+  const doc = await PDFDocument.load(bytes);
+  return countDoOperators(doc);
 }
 
 async function makePdf({ w, h, text }) {
@@ -67,35 +100,44 @@ async function main() {
   const d2 = await PDFDocument.load(r2);
   assert(d2.getPageCount() === 1, '大票 → 1 页（实际 ' + d2.getPageCount() + ' 页）');
 
-  console.log('\n[4] 火车票加印：一页两张（2-up 同页双份）');
+  console.log('\n[4] 火车票默认单份（v156：不再加印双份）');
   const r3 = await globalThis.mergeInvoices(PDFDocument, [
     { name: 'train.pdf', bytes: train, train: true, content: cTrain },
   ], {});
   const d3 = await PDFDocument.load(r3);
-  assert(d3.getPageCount() === 1, '火车票双份同页 → 1 页（实际 ' + d3.getPageCount() + ' 页）');
+  assert(d3.getPageCount() === 1, '火车票单份 → 1 页（实际 ' + d3.getPageCount() + ' 页）');
+  // v156 回归：单份时票面只应出现 1 次 → 轨迹长度必须减半（旧版双份为 2 倍）
+  const lenDouble = await countTicketDraws(PDFDocument, [
+    { name: 'train.pdf', bytes: train, train: true, content: cTrain },
+  ], { trainDouble: true });
+  const lenSingle = await countTicketDraws(PDFDocument, [
+    { name: 'train.pdf', bytes: train, train: true, content: cTrain },
+  ], {});
+  assert(lenSingle * 2 === lenDouble,
+    'v156：默认单份绘制量为加印双份的一半（单份 ' + lenSingle + ' 次 vs 双份 ' + lenDouble + ' 次）');
 
-  console.log('\n[4b] 火车票+小票：验证加印生效（默认双份 vs trainDouble=false）');
+  console.log('\n[4b] 火车票+小票：默认单份不再多占页（对比 trainDouble=true）');
   const r4b = await globalThis.mergeInvoices(PDFDocument, [
     { name: 'train.pdf', bytes: train, train: true, content: cTrain },
     { name: 'a.pdf', bytes: small1, content: cSmall },
   ], {});
   const d4b = await PDFDocument.load(r4b);
-  assert(d4b.getPageCount() === 2,
-    '默认加印：seq=[train,train,a] → 页1双份 + 页2小票 = 2 页（实际 ' + d4b.getPageCount() + ' 页）');
+  assert(d4b.getPageCount() === 1,
+    '默认单份：seq=[train,a] → 1 页（实际 ' + d4b.getPageCount() + ' 页）');
   const r4c = await globalThis.mergeInvoices(PDFDocument, [
     { name: 'train.pdf', bytes: train, train: true, content: cTrain },
     { name: 'a.pdf', bytes: small1, content: cSmall },
-  ], { trainDouble: false });
+  ], { trainDouble: true });
   const d4c = await PDFDocument.load(r4c);
-  assert(d4c.getPageCount() === 1,
-    'trainDouble=false：seq=[train,a] → 1 页（实际 ' + d4c.getPageCount() + ' 页）');
+  assert(d4c.getPageCount() === 2,
+    'trainDouble=true：seq=[train,train,a] → 2 页（实际 ' + d4c.getPageCount() + ' 页）');
 
-  console.log('\n[5] trainDouble=false 关闭加印');
+  console.log('\n[5] trainDouble=true 显式加印（保留的旧行为）');
   const r4 = await globalThis.mergeInvoices(PDFDocument, [
     { name: 'train.pdf', bytes: train, train: true, content: cTrain },
-  ], { trainDouble: false });
+  ], { trainDouble: true });
   const d4 = await PDFDocument.load(r4);
-  assert(d4.getPageCount() === 1, 'trainDouble=false → 1 页（实际 ' + d4.getPageCount() + ' 页）');
+  assert(d4.getPageCount() === 1, 'trainDouble=true → 双份同页 1 页（实际 ' + d4.getPageCount() + ' 页）');
 
   console.log('\n[6] 混合：小票×2 + 大票 + 火车票');
   const r5 = await globalThis.mergeInvoices(PDFDocument, [
@@ -105,15 +147,17 @@ async function main() {
     { name: 'train.pdf', bytes: train, train: true, content: cTrain },
   ], {});
   const d5 = await PDFDocument.load(r5);
-  // 小票拼 1 页 + 大票 1 页 + 火车票双份同页 1 页 = 3 页
-  assert(d5.getPageCount() === 3, '混合 → 3 页（实际 ' + d5.getPageCount() + ' 页）');
+  // v156：seq=[a,b,big,train] → 页1 小票×2 + 页2(大票,火车票) = 2 页
+  // （旧版火车票加印为 seq=[a,b,big,train,train] → 3 页，单份后少一页）
+  assert(d5.getPageCount() === 2, '混合 → 2 页（实际 ' + d5.getPageCount() + ' 页）');
+  assert(countDoOperators(d5) === 4, '混合绘制次数 = 4（2 小票 + 1 大票 + 1 火车票，无重复）');
 
   console.log('\n[7] 文件名兜底识别火车票（isTrain 默认关键字）');
   const r6 = await globalThis.mergeInvoices(PDFDocument, [
     { name: '高铁票.pdf', bytes: train, content: cTrain },
   ], {});
   const d6 = await PDFDocument.load(r6);
-  assert(d6.getPageCount() === 1, '文件名含"高铁"→ 识别为火车票双份同页 → 1 页（实际 ' + d6.getPageCount() + ' 页）');
+  assert(d6.getPageCount() === 1, '文件名含"高铁"→ 识别为火车票单份 → 1 页（实际 ' + d6.getPageCount() + ' 页）');
 
   console.log('\n[8] 输出 PDF 可重新加载（不变量）');
   const r7 = await globalThis.mergeInvoices(PDFDocument, [

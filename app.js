@@ -275,7 +275,7 @@
       if (isAviation && !isRail) return false;
       // v125：网约车/出行凭证前置排除——滴滴/T3/阳光等网约车发票的行程明细常含
       // “高铁站/动车进站口”等地址描述（如“常德站-南进站口(高铁)”“长沙南站-西进站口(动车进站)”），
-      // 命中 高铁/动车 关键词会被误判为火车票（归错分类 + 火车票加印双份）。
+      // 命中 高铁/动车 关键词会被误判为火车票（归错分类 + 豁免旋转/裁剪）。
       // 真实火车票票面（铁路电子客票）不含 滴滴/T3/出租车/旅客运输 等网约车特征词，前置排除安全。
       if (/滴滴|花小猪|曹操|t3|首汽|如祺|哈啰|阳光出行|享道|神州专车|万顺|网约车|出租车|打车|打的|的士|旅客运输|taxi|uber|didi|出行服务/.test(raw)) return false;
       // 1) 直接关键词匹配
@@ -1313,10 +1313,10 @@ function parseGaodeTrips(text, defaultDate, cells) {
           const type = classifyInvoice(text);
           let train = type === 'train';
           // v18：文字提取失败或票面无类别信号时，用版式兜底识别火车票——
-          // 横版长条票（宽/高 > 2.5 且内容高 < 10cm）判定为火车票（自动加印 + 豁免旋转）
+          // 横版长条票（宽/高 > 2.5 且内容高 < 10cm）判定为火车票（豁免旋转/裁剪）
           // v126：仅对原始分类为「未识别(other)」的票兜底！此前用 type!=='itinerary' 排除，
           // 但滴滴/T3/阳光行程单 classifyInvoice 命中网约车规则返回 ridehail（规则3 在规则6 行程单之前），
-          // 横版行程单红框宽高比>2.5 且高<10cm → 被误判为火车票 → 加印双份 + 豁免裁剪 + 不旋转 → 压成极小。
+          // 横版行程单红框宽高比>2.5 且高<10cm → 被误判为火车票 → 豁免裁剪 + 不旋转 → 压成极小。
           if (!train && type === 'other') {
             const c0 = content && content[0];
             const pw = c0 ? c0.wCm : (w / PT_PER_CM);
@@ -1515,7 +1515,7 @@ function parseGaodeTrips(text, defaultDate, cells) {
         ? '<span class="badge err" title="未提取到文字（可能为矢量转曲票/扫描票）">未识别</span>'
         : '';
       const trainBtn = (noText && !f.error)
-        ? `<button class="train-btn" data-act="train" title="${manualTrain ? '已标记为火车票，点击取消' : '文字提取失败，标记为火车票（加印双份）'}" style="${manualTrain ? 'background:#10B981;border-color:#10B981;color:#fff' : ''}">${manualTrain ? '火车票 ✓' : '标为火车票'}</button>`
+        ? `<button class="train-btn" data-act="train" title="${manualTrain ? '已标记为火车票，点击取消' : '文字提取失败，标记为火车票（豁免旋转/裁剪，单份打印）'}" style="${manualTrain ? 'background:#10B981;border-color:#10B981;color:#fff' : ''}">${manualTrain ? '火车票 ✓' : '标为火车票'}</button>`
         : '';
       // 金额（大小写）：优先用票面大写，否则由小写金额生成；二维码识别金额时标注来源
       const amtLower = (f.amount != null) ? '¥' + f.amount.toFixed(2) : '-';
@@ -1569,14 +1569,14 @@ function parseGaodeTrips(text, defaultDate, cells) {
       });
 
       // v125：无文字票据「标为火车票」——trainOverride 此前从未被赋值（无 UI），
-      // 矢量转曲票/扫描票无法提取文字时无法归类；现在一键标记，合并时加印双份。
+      // 矢量转曲票/扫描票无法提取文字时无法归类；现在一键标记（豁免旋转/裁剪，单份打印）。
       const trainBtnEl = row.querySelector('[data-act="train"]');
       if (trainBtnEl) {
         trainBtnEl.addEventListener('click', (e) => {
           e.stopPropagation();
           trainOverride[f.name] = !trainOverride[f.name];
           f.train = !!trainOverride[f.name];
-          toast(trainOverride[f.name] ? '已标记为火车票（合并时加印双份）' : '已取消火车票标记');
+          toast(trainOverride[f.name] ? '已标记为火车票（豁免旋转/裁剪，单份打印）' : '已取消火车票标记');
           render();
         });
       }

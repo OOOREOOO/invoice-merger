@@ -34,14 +34,14 @@ const out = await globalThis.mergeInvoices(PDFDocument, files, opts);
 // out: Uint8Array（合并后 PDF）；无文件时返回 null
 
 // files: [{ name, bytes: Uint8Array, train?: bool, content?: [{ hCm, wCm, empty?, bbox? }] }]
-// opts:  { thresholdCm?: 14, marginMm?: 8, isTrain?: fn, trainDouble?: true }
+// opts:  { thresholdCm?: 14, marginMm?: 8, isTrain?: fn, trainDouble?: false }
 ```
 
 布局规则：
 
 - 每页两张（2-up）上下拼版，按**实际内容包围盒**裁剪绘制（扫描进 A4 的小票也能正确识别为小票）
 - 内容高 > 14cm 的大发票独占一页（缩放适配）
-- 火车票**一页双份**加印（`trainDouble: false` 可关闭）
+- 火车票**只打印 1 份**（v156 起默认单份；如需加印传 `trainDouble: true`）
 - 行程单预旋转 90° 后拼版
 
 ## 测试
@@ -51,7 +51,7 @@ const out = await globalThis.mergeInvoices(PDFDocument, files, opts);
 NODE_PATH=<node_modules 路径> node test-merge-core.js
 ```
 
-覆盖：2-up 拼版页数、大票独占、火车票加印（默认开 / 关）、混合输入页数、文件名兜底识别、A4 输出与可重载不变量。
+覆盖：2-up 拼版页数、大票独占、火车票单份（默认 / 显式关闭 / 显式加印）、混合输入页数、文件名兜底识别、A4 输出与可重载不变量。
 
 ## v115 变更
 
@@ -336,3 +336,43 @@ NODE_PATH=<node_modules 路径> node test-merge-core.js
     - 内联 JS 语法 3 块全过；test-merge-core 16 项 PASS
   - **分析方法沉淀**：车型词漏匹配——puppeteer dump flat 后用完整 CAR_ALT 测 `RE.exec`，match 数 < 票面笔数 → 必有 CAR_ALT 漏词；逐项删车型词缩小范围可定位缺失项
 - 版本号 v139 → v140（资源 URL `?v=140`）
+
+## v156 变更
+
+- **火车票不再重复打印——默认只打印 1 份（`trainDouble` 默认值由 true 改为 false）**
+  - **根因**：`merge-core.js` 的 `trainDouble` 采用「默认开启」语义 —— `const trainDouble = opts.trainDouble !== false;`
+    即只要调用方不显式传 `trainDouble: false` 就恒为 true；而 `app.js` 从未传该参数，
+    导致第 2 步序列构建处把每张火车票 **push 两次**：
+    ```js
+    seq.push(it);
+    if (it.train && trainDouble) seq.push(it);   // ← 同一张票对象被重复放入序列
+    ```
+    序列变长后按 2-up 顺序配对绘制（`drawInSlot`），于是同一张票在同一页上下各画一遍
+    —— 这就是"打印两张车票"现象的直接来源。
+  - **修改点（共 3 处，均在 `merge-core.js`）**：
+    1. **L188 默认值翻转**（唯一的逻辑修复点）：`opts.trainDouble !== false` → `opts.trainDouble === true`
+       语义由「默认双份、需显式关闭」改为「默认单份、需显式开启」，调用方不传即单份。
+    2. **L20 文档注释**：`opts` 说明同步为 `trainDouble: boolean (默认 false —— 只打印 1 份)`。
+    3. **L267 步骤注释**：更新为「v156：默认关闭 —— 火车票只打印 1 份；`opts.trainDouble=true` 才加印双份」。
+  - **同步清理**：`app.js` 中 3 处提及"加印双份"的 UI 文案/注释改为"单份打印"（`标为火车票` 按钮 title 与 toast、
+    火车票识别兜底注释）；`README.md` 的 API 说明、布局规则、测试覆盖描述同步更新。
+  - **未改动（确认无第二条重复来源）**：
+    - `items` 构建（L251-262）对每个嵌入页只 push 一次，无重复；
+    - `drawInSlot` 每槽位只调用一次，无循环重复；
+    - `app.js:1883` 生产调用点唯一，且**不传** `trainDouble` → 走新默认单份；
+    - 同名文件导入已有查重（`app.js:1274`），不会因重复导入产生第二份；
+    - 无 `window.print()` / 打印按钮代码（v138 已删除），打印份数完全由合并 PDF 决定。
+  - **验证方式**：
+    - **回归测试**：`NODE_PATH=<node_modules> node test-merge-core.js` —— 全部 PASS（含新增用例）。
+      新增一条**份数级**断言：统计输出 PDF 内容流中的 `Do` 操作符（每次 `drawPage` 落位产生一个 `Do`），
+      直接量化「画了几遍」——默认单份 **1 次/票**，`trainDouble:true` 为 **2 次/票**（3 张票输入：4 次 vs 7 次绘制）。
+      该断言不依赖页数（双份是同页叠放，页数恒为 1，用页数无法判定）。
+    - **端到端**：`_e2e_v156.js` 用与 `app.js:1883` 完全相同的调用签名（3 张火车票 + 1 张普通发票）：
+      - 修复前（旧默认）：4 页、绘制 7 次 → 第 1 页上下均为 **TICKET A**（同一张票重复），第 1/3 页墨迹像素数完全相等（7468 px）即"同一张票印两遍"的指纹；
+      - 修复后（新默认）：2 页、绘制 4 次 → 第 1 页为 **TICKET A + TICKET B**（两张不同的票），第 2 页 **TICKET C + INVOICE X**，每张票只出现一次。
+    - **渲染核验**：pdf.js + `@napi-rs/canvas` 渲染 PNG 逐页肉眼比对（工作区 `canvas` 原生模块缺失，
+      需用 `pdfjs-dist/legacy/build/pdf.mjs` 动态 import，否则 legacy `.js` 构建 `require('canvas')` 失败会**静默渲染空白图**）。
+  - **其他打印场景不受影响**（回归全 PASS）：普通小票/大发票 2-up、行程单旋转+裁剪、混合输入、空输入、A4 尺寸与可重载不变量均未改变；
+    `trainDouble` 仅作用于 `it.train === true` 的票据，非火车票分支完全不经过该判断。
+  - **保留能力**：如需恢复加印，调用方传 `trainDouble: true` 即可（旧行为作为显式选项保留，并有独立测试用例守护）。
+- 版本号 v155 → v156（资源 URL `?v=156`）
